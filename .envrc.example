@@ -1,0 +1,11 @@
+# direnv example - source SDK when entering directory
+# Install direnv: brew install direnv
+# Then: cp .envrc.example .envrc
+
+if [ -d "sdk" ]; then
+    SDK=$(find sdk -name "environment-setup-*" -type f 2>/dev/null | head -1 | xargs dirname)
+    if [ -n "$SDK" ]; then
+        source "$SDK/environment-setup-aarch64-poky-linux"
+    fi
+fi
+
