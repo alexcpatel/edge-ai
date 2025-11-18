@@ -1,21 +1,12 @@
 #!/bin/bash
+set -euo pipefail
+IFS=$'\n\t'
+
 # Download Yocto SDK from EC2 instance
 
-set -e
+source "$(dirname "$0")/lib/common.sh"
 
-source "$(dirname "$0")/../../infrastructure/scripts/lib/common.sh"
-
-instance_id=$(get_instance_id)
-if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
-    log_error "Instance not found"
-    exit 1
-fi
-
-ip=$(get_instance_ip "$instance_id")
-if [ -z "$ip" ] || [ "$ip" == "None" ]; then
-    log_error "Instance not running. Start it first or build an image."
-    exit 1
-fi
+ip=$(get_instance_ip_or_exit)
 
 log_info "Finding SDK on EC2..."
 sdk_path=$(ssh_cmd "$ip" "find $YOCTO_DIR/build/tmp/deploy/sdk -name '*.sh' -type f 2>/dev/null | head -1" || echo "")

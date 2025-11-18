@@ -1,7 +1,6 @@
 .PHONY: build build-image dev sdk help
 .DEFAULT_GOAL := help
 
-INFRA_DIR := build/infrastructure
 REMOTE_DIR := build/remote
 LOCAL_DIR := build/local
 
@@ -10,28 +9,49 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
 # Remote EC2 builds (heavy compute)
-build-image: ## Build full Yocto image on EC2
-	@$(INFRA_DIR)/scripts/instance.sh start
-	@$(INFRA_DIR)/scripts/sync-repo.sh
+build-image: instance-start ## Build full Yocto image on EC2
+	@$(REMOTE_DIR)/scripts/upload-source.sh
 	@$(REMOTE_DIR)/scripts/setup-yocto.sh
-	@$(REMOTE_DIR)/scripts/build-yocto.sh
+	@$(REMOTE_DIR)/scripts/build-image.sh start
+	@$(REMOTE_DIR)/scripts/build-image.sh watch
 
-build-image-stop: build-image ## Build image and stop EC2 instance
-	@$(INFRA_DIR)/scripts/instance.sh stop
+build-image-and-stop: build-image instance-stop ## Build image and stop EC2 instance
+
+build-status: instance-start ## Check if build session is running
+	@$(REMOTE_DIR)/scripts/build-image.sh status
+
+build-attach: instance-start ## Attach to running build session to view logs
+	@$(REMOTE_DIR)/scripts/build-image.sh attach
+
+build-watch: instance-start ## Tail build log (allows scrolling in local terminal)
+	@$(REMOTE_DIR)/scripts/build-image.sh watch
+
+# Clean operations
+clean: instance-start ## Clean Yocto build artifacts
+	@$(REMOTE_DIR)/scripts/clean.sh
+
+clean-all: instance-start ## Clean all build artifacts including tmp
+	@$(REMOTE_DIR)/scripts/clean.sh all
+
+clean-package: instance-start ## Clean a specific package (usage: make clean-package PACKAGE=swig-native)
+	@$(REMOTE_DIR)/scripts/clean.sh $(PACKAGE)
 
 # SDK management
-sdk: ## Download Yocto SDK from EC2 (requires instance running)
+sdk: instance-start ## Download Yocto SDK from EC2
 	@$(REMOTE_DIR)/scripts/download-sdk.sh
 
 # EC2 management
-status: ## Show EC2 instance status
-	@$(INFRA_DIR)/scripts/instance.sh
+instance-start: ## Start/ensure EC2 instance is running
+	@$(REMOTE_DIR)/scripts/instance.sh start
 
-stop: ## Stop EC2 instance
-	@$(INFRA_DIR)/scripts/instance.sh stop
+instance-stop: ## Stop EC2 instance
+	@$(REMOTE_DIR)/scripts/instance.sh stop
 
-clean: ## Clean Yocto build artifacts on EC2
-	@$(REMOTE_DIR)/scripts/clean-build.sh
+instance-status: ## Show EC2 instance status
+	@$(REMOTE_DIR)/scripts/instance.sh status
 
-clean-all: ## Clean all build artifacts on EC2
-	@$(REMOTE_DIR)/scripts/clean-all.sh
+instance-ssh: instance-start ## SSH into EC2 instance
+	@$(REMOTE_DIR)/scripts/instance.sh ssh
+
+instance-health: ## Run comprehensive instance health diagnostics
+	@$(REMOTE_DIR)/scripts/instance.sh health
