@@ -12,10 +12,6 @@ export YOCTO_BUILD_DIR="${YOCTO_DIR}/build"
 # Source sync configuration
 export REMOTE_SOURCE_DIR="${YOCTO_DIR}/edge-ai"  # Remote directory on EC2 (entire repo)
 
-# Build configuration
-export SSTATE_DIR="/home/${EC2_USER}/Yocto/sstate_dir"
-export DL_DIR="/home/${EC2_USER}/Yocto/downloads"
-
 # Available Jetson machines:
 # - jetson-tx1-devkit
 # - jetson-tx2-devkit

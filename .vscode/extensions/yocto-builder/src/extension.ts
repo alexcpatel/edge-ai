@@ -22,6 +22,7 @@ interface BuildStatus {
         current: number;
         total: number;
     };
+    lastSuccessfulBuild?: string;
     errors?: string[];
     warning?: string;
 }
@@ -463,6 +464,15 @@ class YoctoBuilderPanel {
         ` : '';
         html = html.replace(/\{\{BUILD_TASK_PROGRESS\}\}/g, taskProgressHtml);
 
+        // Last successful build section
+        const lastBuildHtml = buildStatus.lastSuccessfulBuild ? `
+        <div class="info-row">
+            <span class="info-label">Last successful:</span>
+            <span>${this.escapeHtml(buildStatus.lastSuccessfulBuild)}</span>
+        </div>
+        ` : '';
+        html = html.replace(/\{\{BUILD_LAST_SUCCESSFUL\}\}/g, lastBuildHtml);
+
         // Build warning section
         const warningHtml = buildStatus.warning ? `
         <div class="warning">
@@ -562,65 +572,79 @@ class YoctoBuilderPanel {
     private async getBuildStatus(workspacePath: string): Promise<BuildStatus> {
         try {
             const { stdout } = await execAsync('make build-status', { cwd: workspacePath });
-            const lines = stdout.split('\n');
-
-            const status: BuildStatus = {
-                running: stdout.includes('Build session is running'),
-                errors: []
-            };
-
-            // Extract elapsed time if available (whether running or not)
-            const elapsedMatch = stdout.match(/Elapsed time: (.+)/);
-            if (elapsedMatch) {
-                status.elapsed = elapsedMatch[1];
-                // Parse elapsed time to seconds for client-side incrementing
-                status.elapsedSeconds = this.parseElapsedTimeToSeconds(elapsedMatch[1]);
+            return this.parseBuildStatusOutput(stdout);
+        } catch (error: any) {
+            // execAsync throws on non-zero exit codes, but stdout is still available in the error
+            if (error?.stdout) {
+                return this.parseBuildStatusOutput(error.stdout);
             }
-
-            // Extract task progress if available
-            const taskProgressMatch = stdout.match(/Task progress: (\d+)\/(\d+)/);
-            if (taskProgressMatch) {
-                const current = parseInt(taskProgressMatch[1], 10);
-                const total = parseInt(taskProgressMatch[2], 10);
-                // Only set if both are valid numbers and total > 0
-                if (!isNaN(current) && !isNaN(total) && total > 0) {
-                    status.taskProgress = {
-                        current: current,
-                        total: total
-                    };
-                }
-            }
-
-            // Extract errors if any (when build is not running)
-            if (!status.running) {
-                const errorSection = stdout.split('=== Recent Build Errors ===');
-                if (errorSection.length > 1) {
-                    const errorLines = errorSection[1].split('\n')
-                        .filter(line => line.trim() && !line.includes('==='))
-                        .slice(0, 5);
-                    status.errors = errorLines;
-                }
-
-                // Extract warning about BitBake lock file
-                if (stdout.includes('⚠ Warning: BitBake lock file exists')) {
-                    // Extract the full warning block (warning + description + suggestion)
-                    const warningSection = stdout.split('⚠ Warning:')[1];
-                    if (warningSection) {
-                        const warningLines = warningSection.split('\n')
-                            .map(line => line.trim())
-                            .filter(line => line && !line.startsWith('==='))
-                            .slice(0, 3); // Get warning and up to 2 following lines
-                        status.warning = warningLines.join(' ');
-                    } else {
-                        status.warning = 'BitBake lock file exists but no build session is running. Previous build may have been interrupted.';
-                    }
-                }
-            }
-
-            return status;
-        } catch (error) {
             return { running: false };
         }
+    }
+
+    private parseBuildStatusOutput(stdout: string): BuildStatus {
+        const lines = stdout.split('\n');
+
+        const status: BuildStatus = {
+            running: stdout.includes('Build session is running'),
+            errors: []
+        };
+
+        // Extract elapsed time if available (whether running or not)
+        const elapsedMatch = stdout.match(/Elapsed time: (.+)/);
+        if (elapsedMatch) {
+            status.elapsed = elapsedMatch[1];
+            // Parse elapsed time to seconds for client-side incrementing
+            status.elapsedSeconds = this.parseElapsedTimeToSeconds(elapsedMatch[1]);
+        }
+
+        // Extract task progress if available
+        const taskProgressMatch = stdout.match(/Task progress: (\d+)\/(\d+)/);
+        if (taskProgressMatch) {
+            const current = parseInt(taskProgressMatch[1], 10);
+            const total = parseInt(taskProgressMatch[2], 10);
+            // Only set if both are valid numbers and total > 0
+            if (!isNaN(current) && !isNaN(total) && total > 0) {
+                status.taskProgress = {
+                    current: current,
+                    total: total
+                };
+            }
+        }
+
+        // Extract last successful build time if available
+        const lastBuildMatch = stdout.match(/Last successful build: (.+)/);
+        if (lastBuildMatch) {
+            status.lastSuccessfulBuild = lastBuildMatch[1];
+        }
+
+        // Extract errors if any (when build is not running)
+        if (!status.running) {
+            const errorSection = stdout.split('=== Recent Build Errors ===');
+            if (errorSection.length > 1) {
+                const errorLines = errorSection[1].split('\n')
+                    .filter(line => line.trim() && !line.includes('==='))
+                    .slice(0, 5);
+                status.errors = errorLines;
+            }
+
+            // Extract warning about BitBake lock file
+            if (stdout.includes('⚠ Warning: BitBake lock file exists')) {
+                // Extract the full warning block (warning + description + suggestion)
+                const warningSection = stdout.split('⚠ Warning:')[1];
+                if (warningSection) {
+                    const warningLines = warningSection.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line && !line.startsWith('==='))
+                        .slice(0, 3); // Get warning and up to 2 following lines
+                    status.warning = warningLines.join(' ');
+                } else {
+                    status.warning = 'BitBake lock file exists but no build session is running. Previous build may have been interrupted.';
+                }
+            }
+        }
+
+        return status;
     }
 
     public dispose() {

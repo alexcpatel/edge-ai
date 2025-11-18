@@ -129,6 +129,21 @@ check_status() {
     else
         echo "No build session found"
 
+        # Check for last successful build timestamp
+        SUCCESS_FILE="$YOCTO_DIR/.last-successful-build"
+        if ssh_cmd "$ip" "test -f $SUCCESS_FILE" 2>/dev/null; then
+            local timestamp
+            timestamp=$(ssh_cmd "$ip" "cat $SUCCESS_FILE 2>/dev/null" 2>/dev/null | tr -d '\n' || echo "")
+            if [ -n "$timestamp" ] && [ "$timestamp" -gt 0 ] 2>/dev/null; then
+                # Convert Unix timestamp to readable date
+                local readable_date
+                readable_date=$(ssh_cmd "$ip" "date -d @$timestamp '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r $timestamp '+%Y-%m-%d %H:%M:%S' 2>/dev/null" 2>/dev/null || echo "")
+                if [ -n "$readable_date" ]; then
+                    echo "Last successful build: $readable_date"
+                fi
+            fi
+        fi
+
         # Check if there's evidence of an interrupted build
         if ssh_cmd "$ip" "test -f $YOCTO_DIR/build/bitbake.lock 2>/dev/null || test -f $YOCTO_DIR/build*/bitbake.lock 2>/dev/null" 2>/dev/null; then
             echo ""

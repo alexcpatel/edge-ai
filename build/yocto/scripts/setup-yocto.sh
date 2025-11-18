@@ -49,9 +49,5 @@ if [ ! -f "$KAS_CONFIG" ]; then
     exit 1
 fi
 
-# Create directories for sstate and downloads
-mkdir -p "$SSTATE_DIR" "$DL_DIR"
-
 # KAS will handle everything during build - no setup needed here
 # The kas.yml config will be validated when kas build runs
-

@@ -68,7 +68,19 @@ main() {
         sleep 5
     done
 
-    # Session ended - check if auto-stop flag is set
+    # Session ended - check if build succeeded and record timestamp
+    LOG_FILE="/tmp/yocto-build.log"
+    SUCCESS_FILE="/home/ubuntu/yocto-tegra/.last-successful-build"
+    
+    if [ -f "$LOG_FILE" ]; then
+        # Check if build succeeded (look for "Tasks Summary" with "all succeeded")
+        if grep -q "Tasks Summary:.*all succeeded" "$LOG_FILE" 2>/dev/null; then
+            log_info "Build succeeded! Recording timestamp..."
+            date +%s > "$SUCCESS_FILE" 2>/dev/null || true
+        fi
+    fi
+    
+    # Check if auto-stop flag is set
     if [ -f "$FLAG_FILE" ]; then
         log_info "Auto-stop flag found, stopping instance..."
         instance_id=$(get_instance_id)
