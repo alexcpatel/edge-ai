@@ -30,7 +30,7 @@ local_conf_header:
     DISTRO_FEATURES = "x11 opengl "
 
     IMAGE_CLASSES += "image_types_tegra"
-    IMAGE_FSTYPES = "tegraflash"
+    IMAGE_FSTYPES = "tegraflash wic.bz2"
 
     BB_NUMBER_THREADS = "8"
     PARALLEL_MAKE = "-j8"

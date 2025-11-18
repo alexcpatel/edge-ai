@@ -51,6 +51,21 @@ clean-package: ## Clean a specific package (usage: make clean-package PACKAGE=sw
 sdk: ## Download Yocto SDK from EC2 (requires instance running)
 	@$(REMOTE_DIR)/scripts/download-sdk.sh
 
+# Artifact management
+list-artifacts: ## List available build artifacts on EC2 (requires instance running)
+	@$(REMOTE_DIR)/scripts/list-artifacts.sh
+
+download-artifacts: ## Download build artifacts from EC2 (usage: make download-artifacts DEST=/path/to/dest [FILE=artifact.wic], requires instance running)
+	@if [ -z "$(DEST)" ]; then \
+		echo "Error: DEST is required. Usage: make download-artifacts DEST=/path/to/destination [FILE=artifact.wic]"; \
+		exit 1; \
+	fi
+	@if [ -n "$(FILE)" ]; then \
+		$(REMOTE_DIR)/scripts/download-artifacts.sh "$(DEST)" "$(FILE)"; \
+	else \
+		$(REMOTE_DIR)/scripts/download-artifacts.sh "$(DEST)"; \
+	fi
+
 # EC2 management
 instance-start: ## Start/ensure EC2 instance is running
 	@$(REMOTE_DIR)/scripts/instance.sh start

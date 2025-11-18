@@ -290,6 +290,9 @@ class YoctoBuilderPanel {
                         // Update UI to reflect change
                         this.update();
                         break;
+                    case 'downloadArtifacts':
+                        await this.handleDownloadArtifacts();
+                        break;
                     case 'refresh':
                         this.update();
                         break;
@@ -439,6 +442,13 @@ class YoctoBuilderPanel {
         </div>
         `;
         html = html.replace(/\{\{STOP_ON_COMPLETE\}\}/g, stopOnCompleteHtml);
+
+        // Download artifacts button - only show if no errors and there's a successful build
+        const hasErrors = buildStatus.errors && buildStatus.errors.length > 0;
+        const hasSuccessfulBuild = !!buildStatus.lastSuccessfulBuild;
+        const downloadButtonHtml = (!hasErrors && hasSuccessfulBuild) ?
+            '<button class="download-link" onclick="downloadArtifacts()">⬇ Download Artifacts</button>' : '';
+        html = html.replace(/\{\{DOWNLOAD_ARTIFACTS_BUTTON\}\}/g, downloadButtonHtml);
 
         // Build elapsed time section - pass elapsed seconds for client-side incrementing
         const elapsedHtml = buildStatus.elapsed ? `
@@ -645,6 +655,110 @@ class YoctoBuilderPanel {
         }
 
         return status;
+    }
+
+    private async handleDownloadArtifacts() {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            vscode.window.showErrorMessage('No workspace folder found');
+            return;
+        }
+
+        // Check if instance is running
+        try {
+            const instanceStatus = await this.getInstanceStatus(workspaceFolder.uri.fsPath);
+            if (instanceStatus.state?.toLowerCase() !== 'running') {
+                vscode.window.showErrorMessage('EC2 instance is not running. Please start it first.');
+                return;
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage('Could not check instance status. Please ensure the instance is running.');
+            return;
+        }
+
+        // List available artifacts with loading indicator
+        let artifacts: string[] = [];
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: 'Loading artifacts...',
+                cancellable: false
+            },
+            async (progress) => {
+                progress.report({ increment: 0, message: 'Connecting to build instance...' });
+                try {
+                    const { stdout } = await execAsync('make list-artifacts', { cwd: workspaceFolder.uri.fsPath });
+                    progress.report({ increment: 50, message: 'Listing artifacts...' });
+                    artifacts = stdout.split('\n')
+                        .map((line: string) => line.trim())
+                        .filter((line: string) => line.length > 0);
+                    progress.report({ increment: 100, message: 'Done' });
+                } catch (error: any) {
+                    // If list fails, show error
+                    if (error?.stdout) {
+                        artifacts = error.stdout.split('\n')
+                            .map((line: string) => line.trim())
+                            .filter((line: string) => line.length > 0);
+                    }
+                }
+            }
+        );
+
+        if (artifacts.length === 0) {
+            vscode.window.showErrorMessage('No build artifacts found. Build an image first.');
+            return;
+        }
+
+        // Show artifact picker with helpful descriptions
+        const selectedArtifact = await vscode.window.showQuickPick(
+            artifacts.map(artifact => {
+                let description = 'Build artifact';
+                if (artifact.includes('.wic.bz2')) {
+                    description = 'SD Card: Compressed disk image (use with Balena Etcher)';
+                } else if (artifact.includes('.wic')) {
+                    description = 'SD Card: Disk image (use with Balena Etcher)';
+                } else if (artifact.includes('.rootfs.ext4')) {
+                    description = 'SD Card: Root filesystem (manual setup)';
+                } else if (artifact.includes('.tegraflash.tar.gz')) {
+                    description = 'NVIDIA tegraflash package (for device flashing tools)';
+                } else if (artifact.includes('Image') && artifact.endsWith('.bin')) {
+                    description = 'Kernel image';
+                } else if (artifact.includes('uefi')) {
+                    description = 'UEFI bootloader';
+                } else if (artifact.includes('tos-')) {
+                    description = 'Trusted OS image';
+                }
+                return {
+                    label: artifact,
+                    description: description
+                };
+            }),
+            {
+                placeHolder: 'Select an artifact to download',
+                canPickMany: false
+            }
+        );
+
+        if (!selectedArtifact) {
+            return; // User cancelled
+        }
+
+        // Show folder picker dialog
+        const selectedFolders = await vscode.window.showOpenDialog({
+            canSelectFolders: true,
+            canSelectFiles: false,
+            canSelectMany: false,
+            openLabel: 'Select Download Folder'
+        });
+
+        if (!selectedFolders || selectedFolders.length === 0) {
+            return; // User cancelled
+        }
+
+        const destFolder = selectedFolders[0].fsPath;
+
+        // Run download command with specific artifact
+        runCommand(`make download-artifacts DEST="${destFolder}" FILE="${selectedArtifact.label}"`, 'Yocto Builder - Download Artifacts');
     }
 
     public dispose() {

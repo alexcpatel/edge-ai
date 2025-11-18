@@ -109,6 +109,23 @@
             cursor: not-allowed;
         }
 
+        .download-link {
+            padding: 2px 0;
+            font-size: 11px;
+            background: none;
+            border: none;
+            color: var(--vscode-textLink-foreground);
+            cursor: pointer;
+            text-decoration: underline;
+            text-align: left;
+            margin-top: 4px;
+            margin-bottom: 0;
+        }
+
+        .download-link:hover {
+            color: var(--vscode-textLink-activeForeground);
+        }
+
         .info-row {
             display: flex;
             justify-content: space-between;
@@ -307,6 +324,7 @@
             {{BUILD_ELAPSED_TIME}}
             {{BUILD_TASK_PROGRESS}}
             {{BUILD_LAST_SUCCESSFUL}}
+            {{DOWNLOAD_ARTIFACTS_BUTTON}}
             {{BUILD_WARNING}}
             {{BUILD_ERRORS}}
             <div class="button-group">
@@ -443,6 +461,10 @@
 
         function buildTerminate() {
             vscode.postMessage({ command: 'buildTerminate' });
+        }
+
+        function downloadArtifacts() {
+            vscode.postMessage({ command: 'downloadArtifacts' });
         }
     </script>
 </body>
