@@ -107,6 +107,24 @@ check_status() {
             fi
         fi
 
+        # Extract task progress from build log (only check last 20 lines for efficiency)
+        if ssh_cmd "$ip" "test -f /tmp/yocto-build.log" 2>/dev/null; then
+            local task_progress
+            task_progress=$(ssh_cmd "$ip" \
+                "tail -20 /tmp/yocto-build.log 2>/dev/null | grep -oE 'Running task [0-9]+ of [0-9]+' | tail -1" 2>/dev/null || echo "")
+
+            if [ -n "$task_progress" ]; then
+                # Extract current and total tasks
+                local current_task total_tasks
+                current_task=$(echo "$task_progress" | grep -oE 'Running task [0-9]+' | grep -oE '[0-9]+' || echo "")
+                total_tasks=$(echo "$task_progress" | grep -oE 'of [0-9]+' | grep -oE '[0-9]+' || echo "")
+
+                if [ -n "$current_task" ] && [ -n "$total_tasks" ]; then
+                    echo "Task progress: $current_task/$total_tasks"
+                fi
+            fi
+        fi
+
         exit 0
     else
         echo "No build session found"

@@ -17,18 +17,25 @@
         body {
             font-family: var(--vscode-font-family);
             padding: 8px;
+            margin: 0;
             color: var(--vscode-foreground);
             background-color: var(--vscode-editor-background);
             font-size: 12px;
             position: relative;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
         }
 
         .container {
             display: flex;
             gap: 10px;
-            height: calc(100% - 16px);
+            flex: 1;
             overflow: hidden;
+            margin: 0;
+            min-height: 0;
         }
 
         .section {
@@ -40,6 +47,8 @@
             display: flex;
             flex-direction: column;
             overflow-y: auto;
+            margin: 0;
+            min-height: 0;
         }
 
         .section h2 {
@@ -214,6 +223,35 @@
             cursor: pointer;
         }
 
+        .progress-bar-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .progress-bar {
+            flex: 1;
+            height: 8px;
+            background-color: var(--vscode-progressBar-background);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--vscode-panel-border);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--vscode-progressBar-foreground);
+            transition: width 0.3s ease;
+        }
+
+        .progress-percentage {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+            min-width: 40px;
+            text-align: right;
+        }
+
         code {
             background-color: var(--vscode-textBlockQuote-background);
             padding: 1px 3px;
@@ -267,6 +305,7 @@
                 <span><strong>Status:</strong> {{BUILD_STATUS_TEXT}}</span>
             </div>
             {{BUILD_ELAPSED_TIME}}
+            {{BUILD_TASK_PROGRESS}}
             {{BUILD_WARNING}}
             {{BUILD_ERRORS}}
             <div class="button-group">
@@ -281,6 +320,77 @@
     <script>
         const vscode = acquireVsCodeApi();
         const refreshIndicator = document.getElementById('refreshIndicator');
+        let elapsedTimeInterval = null;
+        let lastElapsedSeconds = 0;
+        let lastUpdateTime = Date.now();
+
+        // Format seconds into readable time string
+        function formatElapsedTime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+
+            if (days > 0) {
+                return `${days}-${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            } else if (hours > 0) {
+                return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            } else {
+                return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+        }
+
+        // Update elapsed time display
+        function updateElapsedTime() {
+            const elapsedElement = document.getElementById('elapsedTime');
+            if (!elapsedElement) {
+                return;
+            }
+
+            const isRunning = elapsedElement.getAttribute('data-is-running') === 'true';
+            if (!isRunning) {
+                // Build not running, stop updating
+                if (elapsedTimeInterval) {
+                    clearInterval(elapsedTimeInterval);
+                    elapsedTimeInterval = null;
+                }
+                return;
+            }
+
+            // Calculate elapsed time based on last known value + time since last update
+            const now = Date.now();
+            const timeDiff = Math.floor((now - lastUpdateTime) / 1000);
+            const currentElapsedSeconds = lastElapsedSeconds + timeDiff;
+
+            elapsedElement.textContent = formatElapsedTime(currentElapsedSeconds);
+        }
+
+        // Start/update elapsed time tracking
+        function startElapsedTimeTracking() {
+            const elapsedElement = document.getElementById('elapsedTime');
+            if (!elapsedElement) {
+                return;
+            }
+
+            const elapsedSecondsAttr = elapsedElement.getAttribute('data-elapsed-seconds');
+            const isRunning = elapsedElement.getAttribute('data-is-running') === 'true';
+
+            if (elapsedSecondsAttr !== null) {
+                lastElapsedSeconds = parseInt(elapsedSecondsAttr, 10) || 0;
+                lastUpdateTime = Date.now();
+            }
+
+            // Clear existing interval
+            if (elapsedTimeInterval) {
+                clearInterval(elapsedTimeInterval);
+            }
+
+            // Start updating every second if build is running
+            if (isRunning) {
+                updateElapsedTime(); // Update immediately
+                elapsedTimeInterval = setInterval(updateElapsedTime, 1000);
+            }
+        }
 
         // Show refresh animation briefly when page updates (auto-refresh)
         function showRefreshAnimation() {
@@ -295,6 +405,7 @@
         // Show animation on page load/update (with small delay to ensure DOM is ready)
         setTimeout(() => {
             showRefreshAnimation();
+            startElapsedTimeTracking();
         }, 100);
 
         function instanceStart() {

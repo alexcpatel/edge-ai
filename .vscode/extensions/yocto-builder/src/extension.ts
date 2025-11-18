@@ -17,6 +17,11 @@ interface InstanceStatus {
 interface BuildStatus {
     running: boolean;
     elapsed?: string;
+    elapsedSeconds?: number; // Total seconds for client-side incrementing
+    taskProgress?: {
+        current: number;
+        total: number;
+    };
     errors?: string[];
     warning?: string;
 }
@@ -434,14 +439,29 @@ class YoctoBuilderPanel {
         `;
         html = html.replace(/\{\{STOP_ON_COMPLETE\}\}/g, stopOnCompleteHtml);
 
-        // Build elapsed time section
+        // Build elapsed time section - pass elapsed seconds for client-side incrementing
         const elapsedHtml = buildStatus.elapsed ? `
         <div class="info-row">
             <span class="info-label">Elapsed:</span>
-            <span>${buildStatus.elapsed}</span>
+            <span id="elapsedTime" data-elapsed-seconds="${buildStatus.elapsedSeconds || 0}" data-is-running="${buildStatus.running}">${buildStatus.elapsed}</span>
         </div>
         ` : '';
         html = html.replace(/\{\{BUILD_ELAPSED_TIME\}\}/g, elapsedHtml);
+
+        // Build task progress section
+        const taskProgressHtml = buildStatus.taskProgress && buildStatus.taskProgress.total > 0 ? `
+        <div class="info-row">
+            <span class="info-label">Progress:</span>
+            <span>${buildStatus.taskProgress.current} / ${buildStatus.taskProgress.total} tasks</span>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar">
+                <div class="progress-bar-fill" style="width: ${Math.min(100, Math.max(0, (buildStatus.taskProgress.current / buildStatus.taskProgress.total * 100))).toFixed(1)}%"></div>
+            </div>
+            <span class="progress-percentage">${Math.min(100, Math.max(0, (buildStatus.taskProgress.current / buildStatus.taskProgress.total * 100))).toFixed(1)}%</span>
+        </div>
+        ` : '';
+        html = html.replace(/\{\{BUILD_TASK_PROGRESS\}\}/g, taskProgressHtml);
 
         // Build warning section
         const warningHtml = buildStatus.warning ? `
@@ -472,6 +492,40 @@ class YoctoBuilderPanel {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    private parseElapsedTimeToSeconds(elapsed: string): number {
+        // Parse formats like:
+        // "01:23:45" (HH:MM:SS)
+        // "23:45" (MM:SS)
+        // "45" (SS)
+        // "1-02:03:45" (D-HH:MM:SS)
+        const parts = elapsed.trim().split(/[-:]/);
+
+        if (parts.length === 1) {
+            // Just seconds
+            return parseInt(parts[0], 10) || 0;
+        } else if (parts.length === 2) {
+            // MM:SS
+            const minutes = parseInt(parts[0], 10) || 0;
+            const seconds = parseInt(parts[1], 10) || 0;
+            return minutes * 60 + seconds;
+        } else if (parts.length === 3) {
+            // HH:MM:SS
+            const hours = parseInt(parts[0], 10) || 0;
+            const minutes = parseInt(parts[1], 10) || 0;
+            const seconds = parseInt(parts[2], 10) || 0;
+            return hours * 3600 + minutes * 60 + seconds;
+        } else if (parts.length === 4) {
+            // D-HH:MM:SS
+            const days = parseInt(parts[0], 10) || 0;
+            const hours = parseInt(parts[1], 10) || 0;
+            const minutes = parseInt(parts[2], 10) || 0;
+            const seconds = parseInt(parts[3], 10) || 0;
+            return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+        }
+
+        return 0;
     }
 
     private async getInstanceStatus(workspacePath: string): Promise<InstanceStatus> {
@@ -519,6 +573,22 @@ class YoctoBuilderPanel {
             const elapsedMatch = stdout.match(/Elapsed time: (.+)/);
             if (elapsedMatch) {
                 status.elapsed = elapsedMatch[1];
+                // Parse elapsed time to seconds for client-side incrementing
+                status.elapsedSeconds = this.parseElapsedTimeToSeconds(elapsedMatch[1]);
+            }
+
+            // Extract task progress if available
+            const taskProgressMatch = stdout.match(/Task progress: (\d+)\/(\d+)/);
+            if (taskProgressMatch) {
+                const current = parseInt(taskProgressMatch[1], 10);
+                const total = parseInt(taskProgressMatch[2], 10);
+                // Only set if both are valid numbers and total > 0
+                if (!isNaN(current) && !isNaN(total) && total > 0) {
+                    status.taskProgress = {
+                        current: current,
+                        total: total
+                    };
+                }
             }
 
             // Extract errors if any (when build is not running)
