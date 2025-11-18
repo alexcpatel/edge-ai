@@ -34,14 +34,18 @@ build-check-auto-stop: ## Check if auto-stop is enabled (requires instance runni
 	@$(REMOTE_DIR)/scripts/build-image.sh check-auto-stop
 
 # Clean operations
-clean: ## Clean Yocto build artifacts (requires instance running)
-	@$(REMOTE_DIR)/scripts/clean.sh
+clean: ## Clean current image (requires instance running)
+	@$(REMOTE_DIR)/scripts/clean.sh --image
 
-clean-all: ## Clean all build artifacts including tmp (requires instance running)
-	@$(REMOTE_DIR)/scripts/clean.sh all
+clean-all: ## Clean all build artifacts including tmp and cache (requires instance running)
+	@$(REMOTE_DIR)/scripts/clean.sh --all
 
 clean-package: ## Clean a specific package (usage: make clean-package PACKAGE=swig-native, requires instance running)
-	@$(REMOTE_DIR)/scripts/clean.sh $(PACKAGE)
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "Error: PACKAGE is required. Usage: make clean-package PACKAGE=swig-native"; \
+		exit 1; \
+	fi
+	@$(REMOTE_DIR)/scripts/clean.sh --package $(PACKAGE)
 
 # SDK management
 sdk: ## Download Yocto SDK from EC2 (requires instance running)

@@ -202,7 +202,7 @@ class YoctoBuilderPanel {
             async message => {
                 switch (message.command) {
                     case 'instanceStart':
-                        runCommand('make instance-start');
+                        runCommand('make instance-start', 'Yocto Builder - Start');
                         // Sync auto-stop preference to server after instance starts (silently, no terminal)
                         const autoStopPref = this._context.globalState.get<boolean>('autoStopOnBuildComplete', false);
                         if (autoStopPref) {
