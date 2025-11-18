@@ -1,8 +1,23 @@
+# Data source for Ubuntu 22.04 LTS AMI (official Canonical AMI)
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 # Security Group
-# This resource matches the existing security group and will be imported
 resource "aws_security_group" "yocto_builder" {
-  name        = "launch-wizard-2"
-  description = "launch-wizard-2 created 2025-11-11T02:45:31.839Z"
+  name        = "yocto-builder-sg"
+  description = "Security group for Yocto builder EC2 instance - allows SSH access"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -27,8 +42,6 @@ resource "aws_security_group" "yocto_builder" {
 
   lifecycle {
     ignore_changes = [
-      name,
-      description,
       ingress,
       egress,
       tags,
@@ -39,12 +52,12 @@ resource "aws_security_group" "yocto_builder" {
 }
 
 # EC2 Instance
-# This resource matches the existing instance and will be imported
 resource "aws_instance" "yocto_builder" {
-  ami           = var.instance_ami
-  instance_type = var.instance_type
-  key_name      = var.instance_key_name
-  subnet_id     = var.instance_subnet_id
+  ami                  = data.aws_ami.ubuntu.id
+  instance_type        = var.instance_type
+  key_name             = var.instance_key_name
+  subnet_id            = var.instance_subnet_id
+  iam_instance_profile = aws_iam_instance_profile.yocto_builder.name
 
   vpc_security_group_ids = [aws_security_group.yocto_builder.id]
 

@@ -1,0 +1,41 @@
+# KAS (Kernel Automation System) configuration for Yocto project
+# This file manages all Yocto layers, repositories, and build configuration
+# See: https://kas.readthedocs.io/
+
+header:
+  version: 15
+
+machine: jetson-orin-nano-devkit
+distro: poky
+target: core-image-sato-dev
+
+repos:
+  poky:
+    url: git://git.yoctoproject.org/poky
+    branch: scarthgap
+    layers:
+      meta:
+      meta-poky:
+      meta-yocto-bsp:
+
+  meta-tegra:
+    url: https://github.com/OE4T/meta-tegra.git
+    branch: scarthgap
+    layers:
+      .:
+
+local_conf_header:
+  tegra-config: |
+    # Local configuration additions
+    DISTRO_FEATURES = "x11 opengl "
+
+    IMAGE_CLASSES += "image_types_tegra"
+    IMAGE_FSTYPES = "tegraflash"
+
+    BB_NUMBER_THREADS = "8"
+    PARALLEL_MAKE = "-j8"
+
+bblayers_conf_header:
+  layers-config: |
+    # BitBake layers configuration
+

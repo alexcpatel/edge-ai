@@ -1,0 +1,73 @@
+{
+    "name": "yocto-builder",
+    "displayName": "Yocto Builder",
+    "description": "Monitor and manage Yocto build instance and builds",
+    "version": "0.1.0",
+    "engines": {
+        "vscode": "^1.74.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "*"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "yocto-builder.showPanel",
+                "title": "Show Yocto Builder",
+                "icon": "$(server)"
+            },
+            {
+                "command": "yocto-builder.instanceStart",
+                "title": "Start Instance"
+            },
+            {
+                "command": "yocto-builder.instanceStop",
+                "title": "Stop Instance"
+            },
+            {
+                "command": "yocto-builder.buildStart",
+                "title": "Start Build"
+            },
+            {
+                "command": "yocto-builder.buildStop",
+                "title": "Stop Build"
+            },
+            {
+                "command": "yocto-builder.refresh",
+                "title": "Refresh Status"
+            }
+        ],
+        "views": {
+            "explorer": [
+                {
+                    "id": "yocto-builder",
+                    "name": "Yocto Builder",
+                    "when": "workspaceFolderCount > 0"
+                }
+            ]
+        },
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "yocto-builder",
+                    "title": "Yocto Builder",
+                    "icon": "$(server)"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.74.0",
+        "@types/node": "16.x",
+        "typescript": "^4.9.4"
+    }
+}

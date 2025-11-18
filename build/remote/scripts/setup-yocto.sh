@@ -18,6 +18,7 @@ ssh_cmd "$ip" \
      YOCTO_DIR='$YOCTO_DIR' \
      SSTATE_DIR='$SSTATE_DIR' \
      DL_DIR='$DL_DIR' \
+     REMOTE_SOURCE_DIR='$REMOTE_SOURCE_DIR' \
      bash -s" < "$YOCTO_SCRIPTS_DIR/setup-yocto.sh"
 
 log_success "Yocto setup completed"

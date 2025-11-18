@@ -28,10 +28,12 @@ check_aws_creds() {
 }
 
 get_instance_id() {
-    # Get instance ID regardless of state
+    # Get instance ID, excluding terminated instances
+    # Prefer running instances, but return any non-terminated instance
     aws ec2 describe-instances \
         --region "$AWS_REGION" \
         --filters "Name=tag:Name,Values=$EC2_INSTANCE_NAME" \
+                  "Name=instance-state-name,Values=pending,running,stopping,stopped" \
         --query "Reservations[0].Instances[0].InstanceId" \
         --output text 2>/dev/null || echo ""
 }

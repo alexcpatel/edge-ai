@@ -1,0 +1,19 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "compile-extension",
+            "type": "npm",
+            "script": "compile",
+            "path": ".vscode/extensions/yocto-builder",
+            "problemMatcher": "$tsc"
+        },
+        {
+            "label": "install-extension",
+            "type": "shell",
+            "command": "ln -sfn ${workspaceFolder}/.vscode/extensions/yocto-builder ~/.cursor/extensions/yocto-builder-0.1.0",
+            "dependsOn": "compile-extension",
+            "problemMatcher": []
+        }
+    ]
+}

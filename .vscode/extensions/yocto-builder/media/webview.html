@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yocto Builder</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: var(--vscode-font-family);
+            padding: 8px;
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+            font-size: 12px;
+            position: relative;
+            box-sizing: border-box;
+        }
+
+        .container {
+            display: flex;
+            gap: 10px;
+            height: calc(100% - 16px);
+            overflow: hidden;
+        }
+
+        .section {
+            flex: 1;
+            padding: 8px;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .section h2 {
+            margin: 0 0 6px 0;
+            font-size: 13px;
+            color: var(--vscode-textLink-foreground);
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 4px 0;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .status-indicator.running {
+            background-color: #4caf50;
+        }
+
+        .status-indicator.stopped {
+            background-color: #f44336;
+        }
+
+        .status-indicator.unknown {
+            background-color: #9e9e9e;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 4px 8px;
+            font-size: 11px;
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            border-bottom: 1px solid var(--vscode-panel-border);
+            font-size: 11px;
+        }
+
+        .info-label {
+            font-weight: bold;
+        }
+
+        .error {
+            color: var(--vscode-errorForeground);
+            background-color: var(--vscode-inputValidation-errorBackground);
+            padding: 6px;
+            border-radius: 3px;
+            margin-top: 6px;
+            font-size: 11px;
+        }
+
+        .warning {
+            color: var(--vscode-textLink-foreground);
+            background-color: var(--vscode-textBlockQuote-background);
+            padding: 6px;
+            border-radius: 3px;
+            margin-top: 6px;
+            font-size: 11px;
+            border-left: 3px solid var(--vscode-textLink-foreground);
+        }
+
+        .refresh-indicator {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }
+
+        .refresh-indicator.refreshing {
+            opacity: 1;
+        }
+
+        .refresh-spinner {
+            width: 10px;
+            height: 10px;
+            border: 2px solid var(--vscode-panel-border);
+            border-top-color: var(--vscode-textLink-foreground);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error-code-window {
+            background-color: var(--vscode-textCodeBlock-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 3px;
+            padding: 6px;
+            margin-top: 4px;
+            overflow-x: auto;
+            max-height: 100px;
+        }
+
+        .error-code-window pre {
+            margin: 0;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 10px;
+            color: var(--vscode-errorForeground);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .error-code-window code {
+            background: none;
+            padding: 0;
+        }
+
+        .instruction-text {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        .stop-on-complete {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--vscode-panel-border);
+            font-size: 11px;
+        }
+
+        .stop-on-complete label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            color: var(--vscode-foreground);
+        }
+
+        .stop-on-complete input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        code {
+            background-color: var(--vscode-textBlockQuote-background);
+            padding: 1px 3px;
+            border-radius: 2px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 10px;
+        }
+
+        body {
+            position: relative;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="refresh-indicator" id="refreshIndicator">
+        <div class="refresh-spinner"></div>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h2>Instance Status</h2>
+            <div class="status">
+                <div class="status-indicator {{INSTANCE_STATUS_CLASS}}"></div>
+                <span><strong>State:</strong> {{INSTANCE_STATE}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">ID:</span>
+                <span>{{INSTANCE_ID}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Type:</span>
+                <span>{{INSTANCE_TYPE}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">IP:</span>
+                <span>{{INSTANCE_IP}}</span>
+            </div>
+            <div class="button-group">
+                <button onclick="instanceStart()" {{INSTANCE_START_DISABLED}}>Start</button>
+                <button onclick="instanceStop()" {{INSTANCE_STOP_DISABLED}}>Stop</button>
+                <button onclick="instanceSsh()" {{INSTANCE_SSH_DISABLED}}>SSH</button>
+                <button onclick="instanceHealth()" {{INSTANCE_HEALTH_DISABLED}}>Health</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Build Status</h2>
+            <div class="status">
+                <div class="status-indicator {{BUILD_STATUS_CLASS}}"></div>
+                <span><strong>Status:</strong> {{BUILD_STATUS_TEXT}}</span>
+            </div>
+            {{BUILD_ELAPSED_TIME}}
+            {{BUILD_WARNING}}
+            {{BUILD_ERRORS}}
+            <div class="button-group">
+                <button onclick="buildStart()" {{BUILD_START_DISABLED}}>Start</button>
+                <button onclick="buildWatch()" {{BUILD_WATCH_DISABLED}}>Watch</button>
+                <button onclick="buildTerminate()" {{BUILD_TERMINATE_DISABLED}}>Terminate</button>
+            </div>
+            {{STOP_ON_COMPLETE}}
+        </div>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+        const refreshIndicator = document.getElementById('refreshIndicator');
+
+        // Show refresh animation briefly when page updates (auto-refresh)
+        function showRefreshAnimation() {
+            if (refreshIndicator) {
+                refreshIndicator.classList.add('refreshing');
+                setTimeout(() => {
+                    refreshIndicator.classList.remove('refreshing');
+                }, 800); // Show for 0.8s (one spin cycle)
+            }
+        }
+
+        // Show animation on page load/update (with small delay to ensure DOM is ready)
+        setTimeout(() => {
+            showRefreshAnimation();
+        }, 100);
+
+        function instanceStart() {
+            vscode.postMessage({ command: 'instanceStart' });
+        }
+
+        function instanceStop() {
+            vscode.postMessage({ command: 'instanceStop' });
+        }
+
+        function instanceSsh() {
+            vscode.postMessage({ command: 'instanceSsh' });
+        }
+
+        function instanceHealth() {
+            vscode.postMessage({ command: 'instanceHealth' });
+        }
+
+        function toggleStopOnComplete(checked) {
+            vscode.postMessage({ command: 'toggleStopOnComplete', value: checked });
+        }
+
+        function buildStart() {
+            const button = document.querySelector('button[onclick*="buildStart()"]');
+            if (button && button.disabled) {
+                return;
+            }
+            vscode.postMessage({ command: 'buildStart' });
+        }
+
+        function buildWatch() {
+            vscode.postMessage({ command: 'buildWatch' });
+        }
+
+        function buildTerminate() {
+            vscode.postMessage({ command: 'buildTerminate' });
+        }
+    </script>
+</body>
+
+</html>

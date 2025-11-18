@@ -39,11 +39,13 @@ variable "schedule_expression" {
   default     = "rate(1 hour)"
 }
 
-# EC2 Instance variables (for importing existing instance)
+# EC2 Instance variables
+# Note: AMI is now dynamically fetched using data source (Ubuntu 22.04 LTS)
+# variable "instance_ami" is no longer used but kept for backwards compatibility
 variable "instance_ami" {
-  description = "AMI ID for the EC2 instance (x86_64 Amazon Linux 2023)"
+  description = "AMI ID for the EC2 instance (deprecated - now using Ubuntu AMI data source)"
   type        = string
-  default     = "ami-0a627a85fdcfabbaa"
+  default     = ""
 }
 
 variable "instance_type" {

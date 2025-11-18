@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Yocto Builder Extension",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/.vscode/extensions/yocto-builder"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/.vscode/extensions/yocto-builder/out/**/*.js"
+            ],
+            "preLaunchTask": "compile-extension"
+        }
+    ]
+}

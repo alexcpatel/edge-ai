@@ -3,50 +3,55 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # Yocto setup script (runs on EC2 instance)
+# Assumes Debian/Ubuntu system with apt-get
 
 # Install dependencies
-if command -v dnf &> /dev/null; then
-    PKG_MGR="dnf"
-else
-    PKG_MGR="yum"
-fi
-
-sudo $PKG_MGR update -y
-sudo $PKG_MGR install -y \
-    gawk wget git diffstat unzip texinfo gcc gcc-c++ make \
+sudo apt-get update -y
+sudo apt-get install -y \
+    gawk wget git diffstat unzip texinfo gcc g++ make \
     chrpath socat xterm zstd \
     python3 python3-pip python3-pexpect python3-jinja2 \
-    ncurses-devel ncurses-compat-libs cpio file \
-    which patch bzip2 tar perl-Thread-Queue perl-FindBin \
-    lz4 libtirpc-devel rpcgen perl-core tmux || true
+    libncurses-dev libtinfo5 cpio file \
+    patch bzip2 tar perl \
+    lz4 libtirpc-dev rpcbind tmux awscli || true
 
-for pkg in SDL2-devel SDL-devel libSDL2-devel; do
-    $PKG_MGR list available "$pkg" &>/dev/null && sudo $PKG_MGR install -y "$pkg" && break
+# Install SDL packages
+for pkg in libsdl2-dev libsdl1.2-dev; do
+    sudo apt-get install -y "$pkg" && break || true
 done
 
-sudo pip3 install GitPython || true
+# Install Python packages (ensure pip is available first)
+if ! python3 -m pip --version >/dev/null 2>&1; then
+    echo "pip not found, installing python3-pip..."
+    sudo apt-get install -y python3-pip || true
+fi
 
-# Setup Yocto
+# Install Python packages (use python3 -m pip to avoid PATH issues with sudo)
+python3 -m pip install --user GitPython kas || true
+
+# Ensure user's local bin is in PATH (where pip installs --user scripts)
+export PATH="$HOME/.local/bin:$PATH"
+# Add to bashrc for future sessions
+if ! grep -q '\.local/bin' ~/.bashrc 2>/dev/null; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+fi
+
+# Setup Yocto using KAS
 mkdir -p "$YOCTO_DIR"
 cd "$YOCTO_DIR"
 
-[ ! -d "poky" ] && git clone -b "${YOCTO_BRANCH}" git://git.yoctoproject.org/poky.git poky || \
-    (cd poky && git fetch && git checkout "${YOCTO_BRANCH}" && git pull)
+# KAS will handle all layer management and build directory setup
+# The kas.yml file should be in the remote source directory
+KAS_CONFIG="${REMOTE_SOURCE_DIR}/build/yocto/config/kas.yml"
 
-[ ! -d "meta-tegra" ] && git clone -b "${YOCTO_BRANCH}" https://github.com/OE4T/meta-tegra.git || \
-    (cd meta-tegra && git fetch && git checkout "${YOCTO_BRANCH}" && git pull)
-
-# Initialize build directory
-if [ ! -d "build" ]; then
-    source poky/oe-init-build-env build
-else
-    cd build
+if [ ! -f "$KAS_CONFIG" ]; then
+    echo "Error: kas.yml not found at $KAS_CONFIG"
+    exit 1
 fi
 
-# Copy config files with variable substitution
-CONFIG_DIR="${YOCTO_DIR}/config"
-envsubst < "$CONFIG_DIR/local.conf" > conf/local.conf
-envsubst < "$CONFIG_DIR/bblayers.conf" > conf/bblayers.conf
-
+# Create directories for sstate and downloads
 mkdir -p "$SSTATE_DIR" "$DL_DIR"
+
+# KAS will handle everything during build - no setup needed here
+# The kas.yml config will be validated when kas build runs
 

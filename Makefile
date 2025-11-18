@@ -15,29 +15,36 @@ build-image: instance-start ## Build full Yocto image on EC2
 	@$(REMOTE_DIR)/scripts/build-image.sh start
 	@$(REMOTE_DIR)/scripts/build-image.sh watch
 
-build-image-and-stop: build-image instance-stop ## Build image and stop EC2 instance
-
-build-status: instance-start ## Check if build session is running
+build-status: ## Check if build session is running (does not auto-start instance)
 	@$(REMOTE_DIR)/scripts/build-image.sh status
 
-build-attach: instance-start ## Attach to running build session to view logs
-	@$(REMOTE_DIR)/scripts/build-image.sh attach
-
-build-watch: instance-start ## Tail build log (allows scrolling in local terminal)
+build-watch: ## Tail build log (allows scrolling in local terminal, requires instance running)
 	@$(REMOTE_DIR)/scripts/build-image.sh watch
 
+build-terminate: ## Terminate running build session (requires instance running)
+	@$(REMOTE_DIR)/scripts/build-image.sh terminate
+
+build-set-auto-stop: ## Enable auto-stop (instance stops when build ends, requires instance running)
+	@$(REMOTE_DIR)/scripts/build-image.sh set-auto-stop
+
+build-unset-auto-stop: ## Disable auto-stop (requires instance running)
+	@$(REMOTE_DIR)/scripts/build-image.sh unset-auto-stop
+
+build-check-auto-stop: ## Check if auto-stop is enabled (requires instance running)
+	@$(REMOTE_DIR)/scripts/build-image.sh check-auto-stop
+
 # Clean operations
-clean: instance-start ## Clean Yocto build artifacts
+clean: ## Clean Yocto build artifacts (requires instance running)
 	@$(REMOTE_DIR)/scripts/clean.sh
 
-clean-all: instance-start ## Clean all build artifacts including tmp
+clean-all: ## Clean all build artifacts including tmp (requires instance running)
 	@$(REMOTE_DIR)/scripts/clean.sh all
 
-clean-package: instance-start ## Clean a specific package (usage: make clean-package PACKAGE=swig-native)
+clean-package: ## Clean a specific package (usage: make clean-package PACKAGE=swig-native, requires instance running)
 	@$(REMOTE_DIR)/scripts/clean.sh $(PACKAGE)
 
 # SDK management
-sdk: instance-start ## Download Yocto SDK from EC2
+sdk: ## Download Yocto SDK from EC2 (requires instance running)
 	@$(REMOTE_DIR)/scripts/download-sdk.sh
 
 # EC2 management
@@ -50,7 +57,7 @@ instance-stop: ## Stop EC2 instance
 instance-status: ## Show EC2 instance status
 	@$(REMOTE_DIR)/scripts/instance.sh status
 
-instance-ssh: instance-start ## SSH into EC2 instance
+instance-ssh: ## SSH into EC2 instance (requires instance running)
 	@$(REMOTE_DIR)/scripts/instance.sh ssh
 
 instance-health: ## Run comprehensive instance health diagnostics

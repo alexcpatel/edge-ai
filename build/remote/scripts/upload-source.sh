@@ -26,12 +26,7 @@ rsync -avz --progress \
     "$REPO_ROOT/" \
     "${EC2_USER}@${ip}:${REMOTE_SOURCE_DIR}/"
 
-# Copy config files directly to where they'll be used
-YOCTO_CONFIG_DIR="$(dirname "$0")/../../yocto/config"
-rsync -avz -e "ssh -i $EC2_SSH_KEY_PATH -o StrictHostKeyChecking=no" \
-    "$YOCTO_CONFIG_DIR/local.conf" \
-    "$YOCTO_CONFIG_DIR/bblayers.conf" \
-    "${EC2_USER}@${ip}:${YOCTO_DIR}/config/"
+# KAS will generate local.conf and bblayers.conf automatically, so no need to upload them
 
 log_success "Upload completed"
 
