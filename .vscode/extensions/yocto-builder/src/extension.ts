@@ -59,7 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
             }),
             vscode.commands.registerCommand('yocto-builder.buildStart', () => {
                 outputChannel.appendLine('Command: buildStart');
-                runCommand('make build-image');
+                runCommand('make build-image', 'Yocto Builder - Build');
             }),
             vscode.commands.registerCommand('yocto-builder.buildWatch', () => {
                 outputChannel.appendLine('Command: buildWatch');
@@ -67,7 +67,7 @@ export function activate(context: vscode.ExtensionContext) {
             }),
             vscode.commands.registerCommand('yocto-builder.buildTerminate', () => {
                 outputChannel.appendLine('Command: buildTerminate');
-                runCommand('make build-terminate');
+                runCommand('make build-terminate', 'Yocto Builder - Terminate');
             }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
@@ -257,12 +257,12 @@ class YoctoBuilderPanel {
                         runCommand('make build-watch', 'Yocto Builder - Watch');
                         break;
                     case 'buildTerminate':
-                        runCommand('make build-terminate');
+                        runCommand('make build-terminate', 'Yocto Builder - Terminate');
                         break;
                     case 'toggleStopOnComplete':
                         // Store preference locally (works even when instance is not running)
                         this._context.globalState.update('autoStopOnBuildComplete', message.value || false);
-                        
+
                         // If instance is running, sync to server immediately (silently, no terminal)
                         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
                         if (workspaceFolder) {

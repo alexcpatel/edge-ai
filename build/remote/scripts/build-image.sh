@@ -13,34 +13,36 @@ source "$(dirname "$0")/lib/common.sh"
 
 is_build_running() {
     local ip="$1"
-    ssh_cmd "$ip" "tmux has-session -t yocto-build 2>/dev/null"
+    ssh_cmd "$ip" "tmux has-session -t yocto-build 2>/dev/null" >/dev/null 2>&1
 }
 
 start_build() {
     ip=$(get_instance_ip_or_exit)
 
-    # Kill any existing session
+    # Check if build is already running - fail early if so
     if is_build_running "$ip"; then
-        log_info "Killing existing build session..."
-        ssh_cmd "$ip" "tmux kill-session -t yocto-build 2>/dev/null || true"
-        sleep 1
+        log_error "Build session is already running. Terminate it first with 'make build-terminate'"
+        exit 1
     fi
 
     log_info "Starting Yocto build in tmux session 'yocto-build'..."
 
     # Configure tmux to disable mouse mode (prevents escape sequences from trackpad scrolling)
-    ssh_cmd "$ip" "tmux set -g mouse off 2>/dev/null || true"
+    ssh_cmd "$ip" "tmux set -g mouse off 2>/dev/null || true" || true
 
     # Start build in tmux session using KAS - session will exit when build completes (success or failure)
     # KAS manages its own work directory structure - run from YOCTO_DIR so it creates work dir there
     KAS_CONFIG="${REMOTE_SOURCE_DIR}/build/yocto/config/kas.yml"
-    ssh_cmd "$ip" \
+    if ! ssh_cmd "$ip" \
         "tmux new-session -d -s yocto-build bash -c \"
              export PATH=\"\$HOME/.local/bin:\$PATH\" && \
              cd $YOCTO_DIR && \
              kas build --update $KAS_CONFIG 2>&1 | tee /tmp/yocto-build.log
              exit \${PIPESTATUS[0]}
-         \""
+         \""; then
+        log_error "Failed to start build session via SSH"
+        exit 1
+    fi
 
     # Wait a moment and verify the session is actually running
     sleep 2
@@ -52,10 +54,10 @@ start_build() {
 
     # Start monitor script in background (if not already running)
     MONITOR_SCRIPT="${REMOTE_SOURCE_DIR}/build/yocto/scripts/monitor-build-stop.sh"
-    ssh_cmd "$ip" "chmod +x $MONITOR_SCRIPT 2>/dev/null || true"
-    ssh_cmd "$ip" "pkill -f 'monitor-build-stop.sh' || true"  # Kill any existing monitor
-    # Start monitor and verify it's running
-    ssh_cmd "$ip" "nohup bash $MONITOR_SCRIPT > /tmp/build-monitor.log 2>&1 & sleep 1 && pgrep -f 'monitor-build-stop.sh' > /dev/null && echo 'Monitor started' || echo 'Monitor failed to start'"
+    ssh_cmd "$ip" "chmod +x $MONITOR_SCRIPT 2>/dev/null || true" || true
+    ssh_cmd "$ip" "pkill -f 'monitor-build-stop.sh' 2>/dev/null || true" || true
+    # Start monitor (non-blocking, don't fail if it doesn't start immediately)
+    ssh_cmd "$ip" "nohup bash $MONITOR_SCRIPT > /tmp/build-monitor.log 2>&1 &" || true
 
     log_success "Build started in tmux session 'yocto-build'"
     log_info "Use 'make build-watch' to view progress"
@@ -88,14 +90,14 @@ check_status() {
 
         # Get elapsed time of the actual build process (kas or bitbake)
         elapsed=$(ssh_cmd "$ip" \
-            "pgrep -f 'bitbake.*$YOCTO_IMAGE\|kas.*build' | head -1 | xargs -I {} ps -o etime= -p {} 2>/dev/null" | tr -d ' ' || echo "")
+            "pgrep -f 'bitbake.*$YOCTO_IMAGE\|kas.*build' | head -1 | xargs -I {} ps -o etime= -p {} 2>/dev/null" 2>/dev/null | tr -d ' ' || echo "")
 
         if [ -n "$elapsed" ]; then
             echo "Elapsed time: $elapsed"
         else
             # Fallback: get elapsed time from tmux session process itself
             elapsed=$(ssh_cmd "$ip" \
-                "tmux list-sessions -F '#{session_name} #{pane_pid}' | grep '^yocto-build ' | awk '{print \$2}' | xargs -I {} ps -o etime= -p {} 2>/dev/null" | tr -d ' ' || echo "")
+                "tmux list-sessions -F '#{session_name} #{pane_pid}' | grep '^yocto-build ' | awk '{print \$2}' | xargs -I {} ps -o etime= -p {} 2>/dev/null" 2>/dev/null | tr -d ' ' || echo "")
 
             if [ -n "$elapsed" ]; then
                 echo "Elapsed time: $elapsed"
@@ -154,7 +156,11 @@ watch_build() {
     log_info "Watching build log (will stop when build completes or errors)"
 
     # Execute watch script from synced location
-    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/build/yocto/scripts/watch-build.sh"
+    # If SSH fails or is interrupted, that's okay - build is still running
+    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/build/yocto/scripts/watch-build.sh" || {
+        log_info "Watch session ended (build continues in background)"
+        exit 0
+    }
 }
 
 terminate_build() {
@@ -166,14 +172,14 @@ terminate_build() {
     fi
 
     log_info "Terminating build session..."
-    ssh_cmd "$ip" "tmux kill-session -t yocto-build 2>/dev/null || true"
+    ssh_cmd "$ip" "tmux kill-session -t yocto-build 2>/dev/null || true" || true
 
     # Clean up bitbake processes and lock files after terminating
     log_info "Cleaning up BitBake processes and lock files..."
-    ssh_cmd "$ip" "pkill -f 'bitbake.*server' || true"
-    ssh_cmd "$ip" "pkill -f 'bitbake.*-m' || true"
-    ssh_cmd "$ip" "find $YOCTO_DIR -name 'bitbake.lock' -type f -delete 2>/dev/null || true"
-    ssh_cmd "$ip" "find $YOCTO_DIR -name 'bitbake.sock' -type f -delete 2>/dev/null || true"
+    ssh_cmd "$ip" "pkill -f 'bitbake.*server' 2>/dev/null || true" || true
+    ssh_cmd "$ip" "pkill -f 'bitbake.*-m' 2>/dev/null || true" || true
+    ssh_cmd "$ip" "find $YOCTO_DIR -name 'bitbake.lock' -type f -delete 2>/dev/null || true" || true
+    ssh_cmd "$ip" "find $YOCTO_DIR -name 'bitbake.sock' -type f -delete 2>/dev/null || true" || true
 
     log_success "Build session terminated and cleaned up"
 }
