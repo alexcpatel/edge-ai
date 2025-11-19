@@ -153,6 +153,7 @@ check_status() {
         fi
 
         # Check for build errors in log file
+        local has_errors=0
         if ssh_cmd "$ip" "test -f /tmp/yocto-build.log" 2>/dev/null; then
             echo ""
             echo "=== Recent Build Errors ==="
@@ -162,19 +163,26 @@ check_status() {
 
             if [ -n "$errors" ]; then
                 echo "$errors" | sed 's/^/  /'
+                has_errors=1
             else
                 # Check last few lines for any indication of failure
                 local last_lines
                 last_lines=$(ssh_cmd "$ip" "tail -5 /tmp/yocto-build.log" 2>/dev/null || echo "")
                 if echo "$last_lines" | grep -qiE "failed|error|aborted"; then
                     echo "$last_lines" | sed 's/^/  /'
+                    has_errors=1
                 else
                     echo "  (No obvious errors found in recent log output)"
                 fi
             fi
         fi
 
-        exit 1
+        # Only exit with error if actual errors were found
+        if [ "$has_errors" -eq 1 ]; then
+            exit 1
+        else
+            exit 0
+        fi
     fi
 }
 

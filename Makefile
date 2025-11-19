@@ -66,6 +66,9 @@ download-artifacts: ## Download build artifacts from EC2 (usage: make download-a
 		$(REMOTE_DIR)/scripts/download-artifacts.sh "$(DEST)"; \
 	fi
 
+download-tegraflash: ## Download tegraflash output directory as archive to Downloads folder (requires instance running)
+	@$(REMOTE_DIR)/scripts/download-tegraflash.sh
+
 # EC2 management
 instance-start: ## Start/ensure EC2 instance is running
 	@$(REMOTE_DIR)/scripts/instance.sh start

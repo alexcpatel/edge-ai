@@ -10,6 +10,20 @@ IFS=$'\n\t'
 
 source "$(dirname "$0")/lib/common.sh"
 
+# Check if instance is running before attempting cleanup
+instance_id=$(get_instance_id)
+if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
+    log_error "Instance '$EC2_INSTANCE_NAME' not found"
+    exit 1
+fi
+
+instance_state=$(get_instance_state "$instance_id")
+if [ "$instance_state" != "running" ]; then
+    log_error "Instance is $instance_state (not running)"
+    log_error "Instance must be running to perform cleanup operations"
+    exit 1
+fi
+
 ip=$(get_instance_ip_or_exit)
 KAS_CONFIG="${REMOTE_SOURCE_DIR}/build/yocto/config/kas.yml"
 BUILD_DIR="${YOCTO_DIR}/build"
@@ -19,13 +33,15 @@ cleanup_bitbake() {
     local ip="$1"
     log_info "Cleaning up BitBake processes and lock files..."
 
-    # Kill any running bitbake server processes
-    ssh_cmd "$ip" "pkill -f 'bitbake.*server' 2>/dev/null || true"
-    ssh_cmd "$ip" "pkill -f 'bitbake.*-m' 2>/dev/null || true"
-
-    # Remove bitbake lock files from build directory
-    ssh_cmd "$ip" "find $BUILD_DIR -name 'bitbake.lock' -type f -delete 2>/dev/null || true"
-    ssh_cmd "$ip" "find $BUILD_DIR -name 'bitbake.sock' -type f -delete 2>/dev/null || true"
+    # Run all cleanup commands in a single SSH connection
+    # Commands may fail (processes/files may not exist), so we ignore errors
+    set +e
+    ssh_cmd "$ip" "
+        pkill -f 'bitbake.*server' 2>/dev/null;
+        pkill -f 'bitbake.*-m' 2>/dev/null;
+        rm -f $BUILD_DIR/bitbake.lock $BUILD_DIR/bitbake.sock 2>/dev/null
+    "
+    set -e
 
     # Wait a moment for processes to terminate
     sleep 1
@@ -42,7 +58,9 @@ run_bitbake_cleanall() {
 clean_all_artifacts() {
     local ip="$1"
     log_info "Cleaning all build artifacts..."
-    ssh_cmd "$ip" "cd $YOCTO_DIR && rm -rf build/tmp build/cache 2>/dev/null || true"
+    set +e
+    ssh_cmd "$ip" "cd $YOCTO_DIR && rm -rf build/tmp build/cache 2>/dev/null"
+    set -e
     log_success "All build artifacts cleaned"
 }
 

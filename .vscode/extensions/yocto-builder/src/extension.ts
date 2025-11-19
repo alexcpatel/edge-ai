@@ -633,9 +633,18 @@ class YoctoBuilderPanel {
             const errorSection = stdout.split('=== Recent Build Errors ===');
             if (errorSection.length > 1) {
                 const errorLines = errorSection[1].split('\n')
-                    .filter(line => line.trim() && !line.includes('==='))
+                    .filter(line => {
+                        const trimmed = line.trim();
+                        // Filter out the "no errors" message and section headers
+                        return trimmed &&
+                            !trimmed.includes('===') &&
+                            !trimmed.includes('(No obvious errors found in recent log output)');
+                    })
                     .slice(0, 5);
-                status.errors = errorLines;
+                // Only set errors if there are actual error lines
+                if (errorLines.length > 0) {
+                    status.errors = errorLines;
+                }
             }
 
             // Extract warning about BitBake lock file
@@ -664,101 +673,8 @@ class YoctoBuilderPanel {
             return;
         }
 
-        // Check if instance is running
-        try {
-            const instanceStatus = await this.getInstanceStatus(workspaceFolder.uri.fsPath);
-            if (instanceStatus.state?.toLowerCase() !== 'running') {
-                vscode.window.showErrorMessage('EC2 instance is not running. Please start it first.');
-                return;
-            }
-        } catch (error) {
-            vscode.window.showErrorMessage('Could not check instance status. Please ensure the instance is running.');
-            return;
-        }
-
-        // List available artifacts with loading indicator
-        let artifacts: string[] = [];
-        await vscode.window.withProgress(
-            {
-                location: vscode.ProgressLocation.Notification,
-                title: 'Loading artifacts...',
-                cancellable: false
-            },
-            async (progress) => {
-                progress.report({ increment: 0, message: 'Connecting to build instance...' });
-                try {
-                    const { stdout } = await execAsync('make list-artifacts', { cwd: workspaceFolder.uri.fsPath });
-                    progress.report({ increment: 50, message: 'Listing artifacts...' });
-                    artifacts = stdout.split('\n')
-                        .map((line: string) => line.trim())
-                        .filter((line: string) => line.length > 0);
-                    progress.report({ increment: 100, message: 'Done' });
-                } catch (error: any) {
-                    // If list fails, show error
-                    if (error?.stdout) {
-                        artifacts = error.stdout.split('\n')
-                            .map((line: string) => line.trim())
-                            .filter((line: string) => line.length > 0);
-                    }
-                }
-            }
-        );
-
-        if (artifacts.length === 0) {
-            vscode.window.showErrorMessage('No build artifacts found. Build an image first.');
-            return;
-        }
-
-        // Show artifact picker with helpful descriptions
-        const selectedArtifact = await vscode.window.showQuickPick(
-            artifacts.map(artifact => {
-                let description = 'Build artifact';
-                if (artifact.includes('.wic.bz2')) {
-                    description = 'SD Card: Compressed disk image (use with Balena Etcher)';
-                } else if (artifact.includes('.wic')) {
-                    description = 'SD Card: Disk image (use with Balena Etcher)';
-                } else if (artifact.includes('.rootfs.ext4')) {
-                    description = 'SD Card: Root filesystem (manual setup)';
-                } else if (artifact.includes('.tegraflash.tar.gz')) {
-                    description = 'NVIDIA tegraflash package (for device flashing tools)';
-                } else if (artifact.includes('Image') && artifact.endsWith('.bin')) {
-                    description = 'Kernel image';
-                } else if (artifact.includes('uefi')) {
-                    description = 'UEFI bootloader';
-                } else if (artifact.includes('tos-')) {
-                    description = 'Trusted OS image';
-                }
-                return {
-                    label: artifact,
-                    description: description
-                };
-            }),
-            {
-                placeHolder: 'Select an artifact to download',
-                canPickMany: false
-            }
-        );
-
-        if (!selectedArtifact) {
-            return; // User cancelled
-        }
-
-        // Show folder picker dialog
-        const selectedFolders = await vscode.window.showOpenDialog({
-            canSelectFolders: true,
-            canSelectFiles: false,
-            canSelectMany: false,
-            openLabel: 'Select Download Folder'
-        });
-
-        if (!selectedFolders || selectedFolders.length === 0) {
-            return; // User cancelled
-        }
-
-        const destFolder = selectedFolders[0].fsPath;
-
-        // Run download command with specific artifact
-        runCommand(`make download-artifacts DEST="${destFolder}" FILE="${selectedArtifact.label}"`, 'Yocto Builder - Download Artifacts');
+        // Run download command - archives tegraflash directory and downloads to Downloads folder
+        runCommand('make download-tegraflash', 'Yocto Builder - Download Tegraflash');
     }
 
     public dispose() {
