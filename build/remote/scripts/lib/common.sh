@@ -74,13 +74,16 @@ get_instance_state() {
 ssh_cmd() {
     local ip="$1"
     shift
-    # Add timeouts to prevent hanging on unresponsive instances
-    ssh -i "$EC2_SSH_KEY_PATH" \
-        -o StrictHostKeyChecking=no \
-        -o ConnectTimeout=10 \
-        -o ServerAliveInterval=5 \
-        -o ServerAliveCountMax=2 \
-        "${EC2_USER}@${ip}" "$@"
+
+    # Always use EC2 Instance Connect for SSH authentication
+    source "$(dirname "${BASH_SOURCE[0]}")/ec2-instance-connect.sh"
+    local instance_id
+    instance_id=$(get_instance_id)
+    if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
+        log_error "Instance not found"
+        exit 1
+    fi
+    ssh_cmd_ec2_connect "$ip" "$instance_id" "$@"
 }
 
 get_instance_ip_or_exit() {

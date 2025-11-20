@@ -141,7 +141,9 @@ ssh_instance() {
 
     shift  # Remove 'ssh' from arguments
     if [ $# -eq 0 ]; then
-        ssh -i "$EC2_SSH_KEY_PATH" -o StrictHostKeyChecking=no -t "${EC2_USER}@${ip}"
+        # Interactive SSH session using EC2 Instance Connect
+        source "$(dirname "$0")/lib/ec2-instance-connect.sh"
+        ssh_cmd_ec2_connect "$ip" "$instance_id"
     else
         ssh_cmd "$ip" "$@"
     fi
@@ -200,7 +202,7 @@ health_check() {
         echo ""
     else
         # Quick system check when SSH works
-        ssh_cmd "$ip" "
+        if ! ssh_cmd "$ip" "
             echo '=== System Resources ==='
             free -h | grep -E '^Mem|^Swap'
             df -h / | tail -1
@@ -208,7 +210,9 @@ health_check() {
             echo ''
             echo '=== Top Memory Consumers ==='
             ps aux --sort=-%mem | head -6 | awk '{printf \"  %6s %5.1f%% %s\n\", \$2, \$4, \$11}'
-        " 2>/dev/null || echo "  (could not retrieve system info)"
+        " 2>/dev/null; then
+            echo "  (could not retrieve system info)"
+        fi
         echo ""
     fi
 

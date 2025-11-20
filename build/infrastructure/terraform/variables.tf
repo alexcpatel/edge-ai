@@ -85,3 +85,8 @@ variable "terraform_state_lock_table_name" {
   default     = "terraform-state-lock"
 }
 
+variable "github_repository" {
+  description = "GitHub repository in format 'owner/repo' (e.g., 'myorg/edge-ai')"
+  type        = string
+}
+

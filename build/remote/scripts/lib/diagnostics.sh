@@ -133,8 +133,12 @@ get_instance_console_output() {
 
     # Check for critical errors first
     local oom_count panic_count
-    oom_count=$(echo "$console_output" | grep -ci "out of memory\|oom\|killed process" || echo "0")
-    panic_count=$(echo "$console_output" | grep -ci "kernel panic\|panic:" || echo "0")
+    oom_count=$(echo "$console_output" | grep -ci "out of memory\|oom\|killed process" 2>/dev/null || echo "0")
+    oom_count=$(echo "$oom_count" | tr -d '\n' | head -1)
+    oom_count=${oom_count:-0}
+    panic_count=$(echo "$console_output" | grep -ci "kernel panic\|panic:" 2>/dev/null || echo "0")
+    panic_count=$(echo "$panic_count" | tr -d '\n' | head -1)
+    panic_count=${panic_count:-0}
 
     if [ "$oom_count" -gt 0 ]; then
         echo "  ⚠ OOM detected: $oom_count event(s)"
@@ -239,13 +243,7 @@ check_instance_connectivity() {
         return 1
     fi
 
-    # Use timeout to prevent hanging
-    if timeout 10 ssh -i "$EC2_SSH_KEY_PATH" \
-        -o StrictHostKeyChecking=no \
-        -o ConnectTimeout=5 \
-        -o BatchMode=yes \
-        "${EC2_USER}@${ip}" \
-        "echo 'SSH: OK'" >/dev/null 2>&1; then
+    if ssh_cmd "$ip" "echo 'SSH: OK'" >/dev/null 2>&1; then
         echo "SSH: ✓ Accessible"
         return 0
     else

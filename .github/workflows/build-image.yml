@@ -1,0 +1,56 @@
+name: Build Yocto Image
+
+# This workflow builds the Yocto image on an EC2 instance.
+# Uses OIDC for AWS authentication (no access keys needed) and EC2 Instance Connect for SSH (no private keys needed).
+#
+# Required setup:
+# 1. Configure GitHub OIDC provider in AWS (done via Terraform)
+# 2. Set AWS_ROLE_ARN secret in GitHub (get from Terraform output: github_actions_role_arn)
+# 3. Ensure EC2 Instance Connect is enabled on the instance (Ubuntu 22.04 has it by default)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit SHA, branch, or tag to build'
+        required: false
+        type: string
+
+env:
+  AWS_REGION: us-east-2
+  EC2_INSTANCE_NAME: yocto-builder
+  EC2_USER: ubuntu
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # Yocto builds can take several hours
+    permissions:
+      id-token: write  # Required for OIDC
+      contents: read   # Required for checkout
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.sha }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-BuildImage
+
+      - name: Set up environment variables
+        run: |
+          echo "AWS_REGION=${{ env.AWS_REGION }}" >> $GITHUB_ENV
+          echo "EC2_INSTANCE_NAME=${{ env.EC2_INSTANCE_NAME }}" >> $GITHUB_ENV
+          echo "EC2_USER=${{ env.EC2_USER }}" >> $GITHUB_ENV
+
+      - name: Build image
+        run: make image-build
+
