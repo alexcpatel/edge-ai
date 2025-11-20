@@ -64,7 +64,7 @@ clean-package: ## Clean a specific package (usage: make clean-package PACKAGE=sw
 	@$(REMOTE_DIR)/scripts/clean.sh --package $(PACKAGE)
 
 # SDK management
-sdk: ## Download Yocto SDK from EC2 (requires instance running)
+download-sdk: ## Download Yocto SDK from EC2 (requires instance running)
 	@$(REMOTE_DIR)/scripts/download-sdk.sh
 
 # Artifact management

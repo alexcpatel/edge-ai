@@ -21,6 +21,10 @@ setup_temp_ssh_key() {
     mkdir -p "$EC2_CONNECT_CACHE_DIR"
     chmod 700 "$EC2_CONNECT_CACHE_DIR"
 
+    # Generate new temporary key pair
+    local temp_private_key="$cache_file"
+    local temp_public_key="${temp_private_key}.pub"
+
     # Check if we have a cached key that's still valid (< 50 seconds old)
     if [ -f "$cache_file" ] && [ -f "$cache_time_file" ]; then
         local cache_timestamp
@@ -34,13 +38,9 @@ setup_temp_ssh_key() {
             echo "$cache_file"
             return 0
         fi
-        # Cache expired, clean it up
-        rm -f "$cache_file" "$cache_time_file"
+        # Cache expired, clean it up (remove both private key, public key, and timestamp)
+        rm -f "$temp_private_key" "$temp_public_key" "$cache_time_file"
     fi
-
-    # Generate new temporary key pair
-    local temp_private_key="$cache_file"
-    local temp_public_key="${temp_private_key}.pub"
 
     ssh-keygen -t rsa -b 4096 -f "$temp_private_key" -N "" -q
     chmod 600 "$temp_private_key"

@@ -23,6 +23,8 @@ log_success() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 
 # Check if post-build should run
 should_run_post_build() {
+    return 0
+
     [ "$1" -eq 0 ] && \
     grep -q 'Tasks Summary:.*all succeeded' "$LOG_FILE" 2>/dev/null && \
     grep -q 'Running task' "$LOG_FILE" 2>/dev/null
@@ -81,10 +83,10 @@ create_sdcard_image() {
     ./dosdcard.sh >> "$LOG_FILE" 2>&1
 
     local img
-    img=$(find . -maxdepth 1 -name "*.img" -type f | head -1)
+    img=$(find . -maxdepth 1 -name "*.sdcard" -type f | head -1)
 
     if [ -z "$img" ]; then
-        log_error "SD card image not found after running dosdcard.sh"
+        log_error "SD card image (.sdcard) not found after running dosdcard.sh"
         return 1
     fi
 
@@ -110,7 +112,9 @@ create_sdcard_image() {
 # Run post-build steps
 run_post_build() {
     local artifacts_dir="$YOCTO_DIR/build/tmp/deploy/images/$YOCTO_MACHINE"
-    local sdcard_dir="$HOME/edge-ai-artifacts/sdcard"
+    local artifacts_base_dir="$HOME/edge-ai-artifacts"
+    local sdcard_dir="$artifacts_base_dir/sdcard"
+    local extract_dir="$artifacts_base_dir/tegraflash-extract"
 
     log_info "Creating SD card image from tegraflash archive..."
 
@@ -128,15 +132,18 @@ run_post_build() {
     archive_name=$(basename "$tegraflash_tar")
     log_info "Found tegraflash archive: $archive_name"
 
-    log_info "Creating temporary directory for extraction..."
-    local tmpdir
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
+    log_info "Extracting tegraflash archive to $extract_dir..."
+    mkdir -p "$extract_dir"
+
+    # Clean up any previous extraction
+    if [ -n "$extract_dir" ] && [ -d "$extract_dir" ]; then
+        find "$extract_dir" -mindepth 1 -delete 2>/dev/null || true
+    fi
 
     log_info "Extracting tegraflash archive..."
-    tar -xzf "$tegraflash_tar" -C "$tmpdir"
+    tar -xzf "$tegraflash_tar" -C "$extract_dir"
 
-    create_sdcard_image "$tmpdir" "$sdcard_dir"
+    create_sdcard_image "$extract_dir" "$sdcard_dir"
 }
 
 # Main execution

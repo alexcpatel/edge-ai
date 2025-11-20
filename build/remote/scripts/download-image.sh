@@ -21,10 +21,10 @@ if ! ssh_cmd "$ip" "test -d $SDCARD_DIR_REMOTE" 2>/dev/null; then
 fi
 
 # Find compressed SD card image
-SDCARD_IMG=$(ssh_cmd "$ip" "find $SDCARD_DIR_REMOTE -maxdepth 1 -name '*.img.gz' -type f 2>/dev/null | head -1" || echo "")
+SDCARD_IMG=$(ssh_cmd "$ip" "find $SDCARD_DIR_REMOTE -maxdepth 1 -name '*.sdcard.gz' -type f 2>/dev/null | head -1" || echo "")
 
 if [ -z "$SDCARD_IMG" ]; then
-    log_error "No SD card image found."
+    log_error "No SD card image (.sdcard.gz) found."
     exit 1
 fi
 

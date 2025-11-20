@@ -83,7 +83,11 @@ start_instance() {
 
     log_info "Starting instance..."
     aws ec2 start-instances --region "$AWS_REGION" --instance-ids "$instance_id" >/dev/null
-    aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids "$instance_id"
+    # Add timeout to prevent indefinite hanging (max 5 minutes)
+    timeout 300 aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids "$instance_id" || {
+        log_error "Instance failed to start within 5 minutes"
+        exit 1
+    }
 
     local ip
     ip=$(get_instance_ip "$instance_id")

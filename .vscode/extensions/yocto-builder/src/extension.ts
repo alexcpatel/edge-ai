@@ -1,10 +1,60 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec } from 'child_process';
+import { exec, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
+
+// Wrapper for execAsync with timeout to prevent hanging processes
+async function execWithTimeout(command: string, options: { cwd?: string; timeout?: number } = {}): Promise<{ stdout: string; stderr: string }> {
+    const timeout = options.timeout || 30000; // Default 30 second timeout
+    const { cwd } = options;
+
+    return new Promise((resolve, reject) => {
+        let killedByTimeout = false;
+        let resolved = false;
+
+        const child = exec(command, { cwd }, (error, stdout, stderr) => {
+            if (resolved) return; // Already handled by timeout
+            resolved = true;
+            clearTimeout(timeoutId);
+
+            if (error) {
+                // If process was killed due to timeout, reject with timeout error
+                if (killedByTimeout) {
+                    reject(new Error(`Command timed out after ${timeout}ms: ${command}`));
+                } else {
+                    reject(error);
+                }
+            } else {
+                resolve({ stdout, stderr });
+            }
+        });
+
+        const timeoutId = setTimeout(() => {
+            if (resolved) return; // Process already completed
+            killedByTimeout = true;
+            resolved = true;
+
+            // Kill the process tree to prevent zombie processes
+            if (child.pid) {
+                try {
+                    // On Unix systems, kill the process group
+                    process.kill(-child.pid, 'SIGTERM');
+                } catch (e) {
+                    // Fallback to killing just the process
+                    try {
+                        child.kill('SIGTERM');
+                    } catch (killError) {
+                        // Process may have already exited
+                    }
+                }
+            }
+            reject(new Error(`Command timed out after ${timeout}ms: ${command}`));
+        }, timeout);
+    });
+}
 
 interface InstanceStatus {
     id: string;
@@ -105,10 +155,16 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(`Yocto Builder activation error: ${error}`);
     }
 
-    // Auto-refresh every 5 seconds
+    // Auto-refresh every 5 seconds with debouncing to prevent overlapping calls
+    let refreshInProgress = false;
     const refreshInterval = setInterval(() => {
-        provider?.refresh();
-        YoctoBuilderPanel.currentPanel?.update();
+        if (!refreshInProgress) {
+            refreshInProgress = true;
+            provider?.refresh();
+            YoctoBuilderPanel.currentPanel?.update().finally(() => {
+                refreshInProgress = false;
+            });
+        }
     }, 5000);
 
     context.subscriptions.push({
@@ -116,7 +172,10 @@ export function activate(context: vscode.ExtensionContext) {
     });
 }
 
-async function runCommand(command: string, terminalName?: string): Promise<void> {
+// Cache terminals by name to reuse them instead of creating new ones
+const terminalCache = new Map<string, vscode.Terminal>();
+
+function runCommand(command: string, terminalName?: string): void {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) {
         vscode.window.showErrorMessage('No workspace folder found');
@@ -124,7 +183,21 @@ async function runCommand(command: string, terminalName?: string): Promise<void>
     }
 
     const name = terminalName || 'Yocto Builder';
-    const terminal = vscode.window.createTerminal(name);
+
+    // Reuse existing terminal if available and not disposed
+    let terminal = terminalCache.get(name);
+    if (!terminal || terminal.exitStatus !== undefined) {
+        terminal = vscode.window.createTerminal(name);
+        terminalCache.set(name, terminal);
+
+        // Clean up terminal from cache when it's disposed
+        vscode.window.onDidCloseTerminal((closedTerminal) => {
+            if (closedTerminal === terminal) {
+                terminalCache.delete(name);
+            }
+        });
+    }
+
     terminal.show(true); // Show and focus the terminal
     terminal.sendText(`cd ${workspaceFolder.uri.fsPath} && ${command}`);
 }
@@ -218,11 +291,11 @@ class YoctoBuilderPanel {
                                     try {
                                         const instanceStatus = await this.getInstanceStatus(wsFolder.uri.fsPath);
                                         if (instanceStatus.state?.toLowerCase() === 'running') {
-                                            // Run silently without opening a terminal
-                                            await execAsync('make build-set-auto-stop', { cwd: wsFolder.uri.fsPath });
+                                            // Run silently without opening a terminal, with timeout
+                                            await execWithTimeout('make build-set-auto-stop', { cwd: wsFolder.uri.fsPath, timeout: 15000 });
                                         }
                                     } catch (error) {
-                                        // Ignore errors
+                                        // Ignore errors (including timeouts)
                                     }
                                 }, 5000); // Wait 5 seconds for instance to be ready
                             }
@@ -249,11 +322,11 @@ class YoctoBuilderPanel {
                                     try {
                                         const instanceStatus = await this.getInstanceStatus(wsFolder.uri.fsPath);
                                         if (instanceStatus.state?.toLowerCase() === 'running') {
-                                            // Run silently without opening a terminal
-                                            await execAsync('make build-set-auto-stop', { cwd: wsFolder.uri.fsPath });
+                                            // Run silently without opening a terminal, with timeout
+                                            await execWithTimeout('make build-set-auto-stop', { cwd: wsFolder.uri.fsPath, timeout: 15000 });
                                         }
                                     } catch (error) {
-                                        // Ignore errors
+                                        // Ignore errors (including timeouts)
                                     }
                                 }, 10000); // Wait 10 seconds for instance to be ready
                             }
@@ -276,11 +349,11 @@ class YoctoBuilderPanel {
                                 const instanceStatus = await this.getInstanceStatus(workspaceFolder.uri.fsPath);
                                 if (instanceStatus.state?.toLowerCase() === 'running') {
                                     if (message.value) {
-                                        // Run silently without opening a terminal
-                                        await execAsync('make build-set-auto-stop', { cwd: workspaceFolder.uri.fsPath });
+                                        // Run silently without opening a terminal, with timeout
+                                        await execWithTimeout('make build-set-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
                                     } else {
-                                        // Run silently without opening a terminal
-                                        await execAsync('make build-unset-auto-stop', { cwd: workspaceFolder.uri.fsPath });
+                                        // Run silently without opening a terminal, with timeout
+                                        await execWithTimeout('make build-unset-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
                                     }
                                 }
                             } catch (error) {
@@ -291,7 +364,7 @@ class YoctoBuilderPanel {
                         this.update();
                         break;
                     case 'downloadArtifacts':
-                        await this.handleDownloadArtifacts();
+                        this.handleDownloadArtifacts();
                         break;
                     case 'refresh':
                         this.update();
@@ -418,14 +491,14 @@ class YoctoBuilderPanel {
 
         if (instanceRunning) {
             try {
-                const { stdout } = await execAsync('make build-check-auto-stop', { cwd: workspaceFolder.uri.fsPath });
+                const { stdout } = await execWithTimeout('make build-check-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
                 autoStopEnabled = stdout.includes('enabled') || stdout.trim() === '1';
                 // Sync local preference if server has different value
                 if (autoStopEnabled !== localPreference) {
                     this._context.globalState.update('autoStopOnBuildComplete', autoStopEnabled);
                 }
             } catch (error) {
-                // If command fails, use local preference
+                // If command fails or times out, use local preference
                 autoStopEnabled = localPreference;
             }
         } else {
@@ -447,7 +520,7 @@ class YoctoBuilderPanel {
         const hasErrors = buildStatus.errors && buildStatus.errors.length > 0;
         const hasSuccessfulBuild = !!buildStatus.lastSuccessfulBuild;
         const downloadButtonHtml = (!hasErrors && hasSuccessfulBuild) ?
-            '<button class="download-link" onclick="downloadArtifacts()">⬇ Download Artifacts</button>' : '';
+            '<button class="download-link" onclick="downloadArtifacts()">⬇ Download Image</button>' : '';
         html = html.replace(/\{\{DOWNLOAD_ARTIFACTS_BUTTON\}\}/g, downloadButtonHtml);
 
         // Build elapsed time section - pass elapsed seconds for client-side incrementing
@@ -550,7 +623,7 @@ class YoctoBuilderPanel {
 
     private async getInstanceStatus(workspacePath: string): Promise<InstanceStatus> {
         try {
-            const { stdout } = await execAsync('make instance-status', { cwd: workspacePath });
+            const { stdout } = await execWithTimeout('make instance-status', { cwd: workspacePath, timeout: 20000 });
             const lines = stdout.split('\n');
 
             const status: InstanceStatus = {
@@ -581,13 +654,14 @@ class YoctoBuilderPanel {
 
     private async getBuildStatus(workspacePath: string): Promise<BuildStatus> {
         try {
-            const { stdout } = await execAsync('make build-status', { cwd: workspacePath });
+            const { stdout } = await execWithTimeout('make build-status', { cwd: workspacePath, timeout: 20000 });
             return this.parseBuildStatusOutput(stdout);
         } catch (error: any) {
-            // execAsync throws on non-zero exit codes, but stdout is still available in the error
+            // execWithTimeout throws on non-zero exit codes or timeout, but stdout is still available in the error
             if (error?.stdout) {
                 return this.parseBuildStatusOutput(error.stdout);
             }
+            // On timeout or other errors, return safe default
             return { running: false };
         }
     }
@@ -666,15 +740,15 @@ class YoctoBuilderPanel {
         return status;
     }
 
-    private async handleDownloadArtifacts() {
+    private handleDownloadArtifacts(): void {
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
             vscode.window.showErrorMessage('No workspace folder found');
             return;
         }
 
-        // Run download command - archives tegraflash directory and downloads to Downloads folder
-        runCommand('make download-tegraflash', 'Yocto Builder - Download Tegraflash');
+        // Run download command - downloads SD card image to Downloads folder
+        runCommand('make download-image', 'Yocto Builder - Download Image');
     }
 
     public dispose() {
