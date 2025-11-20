@@ -8,7 +8,7 @@ IFS=$'\n\t'
 #   --package PACKAGE: Clean specific package
 #   --image: Clean current image (default if no args)
 
-source "$(dirname "$0")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 # Check if instance is running before attempting cleanup
 instance_id=$(get_instance_id)

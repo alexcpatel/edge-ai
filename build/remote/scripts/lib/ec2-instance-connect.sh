@@ -116,31 +116,4 @@ ssh_cmd_ec2_connect() {
     return $exit_code
 }
 
-# rsync command using EC2 Instance Connect
-rsync_cmd_ec2_connect() {
-    local ip="$1"
-    local instance_id="$2"
-    shift 2
-
-    # Setup temporary key
-    local temp_key
-    if ! temp_key=$(setup_temp_ssh_key "$instance_id") || [ -z "$temp_key" ]; then
-        log_error "Failed to send SSH public key via EC2 Instance Connect"
-        return 1
-    fi
-
-    # Trap to cleanup on exit (use function to avoid variable expansion issues)
-    _cleanup_key() {
-        cleanup_temp_ssh_key "$temp_key"
-    }
-    trap _cleanup_key EXIT
-
-    # Use temporary key for rsync
-    rsync -e "ssh -i $temp_key -o StrictHostKeyChecking=no" "$@"
-
-    local exit_code=$?
-    cleanup_temp_ssh_key "$temp_key"
-    trap - EXIT
-    return $exit_code
-}
 

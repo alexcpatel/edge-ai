@@ -5,8 +5,8 @@ IFS=$'\n\t'
 # EC2 instance management
 # Usage: instance.sh [status|start|stop|ssh|health] [args...]
 
-source "$(dirname "$0")/lib/common.sh"
-source "$(dirname "$0")/lib/diagnostics.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/diagnostics.sh"
 
 get_instance_type() {
     local instance_id="$1"
@@ -142,7 +142,7 @@ ssh_instance() {
     shift  # Remove 'ssh' from arguments
     if [ $# -eq 0 ]; then
         # Interactive SSH session using EC2 Instance Connect
-        source "$(dirname "$0")/lib/ec2-instance-connect.sh"
+        source "$(dirname "${BASH_SOURCE[0]}")/lib/ec2-instance-connect.sh"
         ssh_cmd_ec2_connect "$ip" "$instance_id"
     else
         ssh_cmd "$ip" "$@"

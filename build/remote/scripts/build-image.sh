@@ -9,7 +9,7 @@ IFS=$'\n\t'
 #   watch:     Tail the build log file (allows scrolling in local terminal)
 #   terminate: Terminate running build session
 
-source "$(dirname "$0")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 is_build_running() {
     local ip="$1"

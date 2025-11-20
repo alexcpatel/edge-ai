@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 # Setup Yocto environment on EC2
 
-source "$(dirname "$0")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 YOCTO_SCRIPTS_DIR="$(dirname "$0")/../../yocto/scripts"
 
 ip=$(get_instance_ip_or_exit)

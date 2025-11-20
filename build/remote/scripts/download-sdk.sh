@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 # Download Yocto SDK from EC2 instance
 
-source "$(dirname "$0")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 ip=$(get_instance_ip_or_exit)
 

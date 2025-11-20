@@ -5,7 +5,7 @@ name: Build Yocto Image
 #
 # Required setup:
 # 1. Configure GitHub OIDC provider in AWS (done via Terraform)
-# 2. Set AWS_ROLE_ARN secret in GitHub (get from Terraform output: github_actions_role_arn)
+# 2. Set AWS_ROLE_ARN secret in the "Yocto Builder" environment (get from Terraform output: github_actions_role_arn)
 # 3. Ensure EC2 Instance Connect is enabled on the instance (Ubuntu 22.04 has it by default)
 
 on:
@@ -28,6 +28,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 360  # Yocto builds can take several hours
+    environment: Yocto Builder
     permissions:
       id-token: write  # Required for OIDC
       contents: read   # Required for checkout

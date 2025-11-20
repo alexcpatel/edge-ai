@@ -5,9 +5,7 @@ IFS=$'\n\t'
 # Instance diagnostics and health check functions
 # Used for troubleshooting instance issues when SSH is not accessible
 
-# Source common.sh from the same directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 get_instance_health_metrics() {
     local instance_id="$1"
@@ -226,10 +224,6 @@ check_instance_volumes() {
             printf "  %-18s %-7s %-10s %-11s %-5s %-9s %s\n" \
                 "$vol_id" "${size}GB" "$state" "$device" "$delete_on_term" "$vol_type" "$created_date"
         done
-        echo ""
-        echo "  Note: /dev/xvda maps to nvme0n1, /dev/xvdb maps to nvme1n1, etc."
-        echo "  Any unmounted NVMe devices (e.g., nvme1n1) are likely instance store volumes"
-        echo "  (ephemeral storage that comes with certain instance types - not persistent)"
     else
         echo "  (No volumes found or could not retrieve volume info)"
     fi
