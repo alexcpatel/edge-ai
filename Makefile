@@ -8,12 +8,31 @@ help: ## Show this help message
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
 
+# EC2 management
+instance-start: ## Start/ensure EC2 instance is running
+	@$(REMOTE_DIR)/scripts/instance.sh start
+
+instance-stop: ## Stop EC2 instance
+	@$(REMOTE_DIR)/scripts/instance.sh stop
+
+instance-status: ## Show EC2 instance status
+	@$(REMOTE_DIR)/scripts/instance.sh status
+
+instance-ssh: ## SSH into EC2 instance (requires instance running)
+	@$(REMOTE_DIR)/scripts/instance.sh ssh
+
+instance-health: ## Run comprehensive instance health diagnostics
+	@$(REMOTE_DIR)/scripts/instance.sh health
+
 # Remote EC2 builds (heavy compute)
 build-image: instance-start ## Build full Yocto image on EC2
 	@$(REMOTE_DIR)/scripts/upload-source.sh
 	@$(REMOTE_DIR)/scripts/setup-yocto.sh
 	@$(REMOTE_DIR)/scripts/build-image.sh start
 	@$(REMOTE_DIR)/scripts/build-image.sh watch
+
+build-post-image: ## Post-build operations on EC2
+	@$(REMOTE_DIR)/scripts/post-build-image.sh
 
 build-status: ## Check if build session is running (does not auto-start instance)
 	@$(REMOTE_DIR)/scripts/build-image.sh status
@@ -52,35 +71,9 @@ sdk: ## Download Yocto SDK from EC2 (requires instance running)
 	@$(REMOTE_DIR)/scripts/download-sdk.sh
 
 # Artifact management
-list-artifacts: ## List available build artifacts on EC2 (requires instance running)
-	@$(REMOTE_DIR)/scripts/list-artifacts.sh
+download-image: ## Download SD card image from EC2 to Downloads folder (requires instance running)
+	@$(REMOTE_DIR)/scripts/download-image.sh
 
-download-artifacts: ## Download build artifacts from EC2 (usage: make download-artifacts DEST=/path/to/dest [FILE=artifact.wic], requires instance running)
-	@if [ -z "$(DEST)" ]; then \
-		echo "Error: DEST is required. Usage: make download-artifacts DEST=/path/to/destination [FILE=artifact.wic]"; \
-		exit 1; \
-	fi
-	@if [ -n "$(FILE)" ]; then \
-		$(REMOTE_DIR)/scripts/download-artifacts.sh "$(DEST)" "$(FILE)"; \
-	else \
-		$(REMOTE_DIR)/scripts/download-artifacts.sh "$(DEST)"; \
-	fi
-
-download-tegraflash: ## Download tegraflash output directory as archive to Downloads folder (requires instance running)
-	@$(REMOTE_DIR)/scripts/download-tegraflash.sh
-
-# EC2 management
-instance-start: ## Start/ensure EC2 instance is running
-	@$(REMOTE_DIR)/scripts/instance.sh start
-
-instance-stop: ## Stop EC2 instance
-	@$(REMOTE_DIR)/scripts/instance.sh stop
-
-instance-status: ## Show EC2 instance status
-	@$(REMOTE_DIR)/scripts/instance.sh status
-
-instance-ssh: ## SSH into EC2 instance (requires instance running)
-	@$(REMOTE_DIR)/scripts/instance.sh ssh
-
-instance-health: ## Run comprehensive instance health diagnostics
-	@$(REMOTE_DIR)/scripts/instance.sh health
+# Local QEMU emulation
+run-qemu: ## Run completed Yocto build in QEMU (usage: make run-qemu [IMAGE=/path/to/image.img.gz])
+	@$(LOCAL_DIR)/scripts/run-qemu.sh $(IMAGE)
