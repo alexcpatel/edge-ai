@@ -32,14 +32,16 @@ start_build() {
 
     # Start build in tmux session using KAS - session will exit when build completes (success or failure)
     # KAS manages its own work directory structure - run from YOCTO_DIR so it creates work dir there
+    # Post-build steps are included in the same session so watch can see them
     KAS_CONFIG="${REMOTE_SOURCE_DIR}/build/yocto/config/kas.yml"
+    BUILD_SCRIPT="${REMOTE_SOURCE_DIR}/build/yocto/scripts/run-build-with-post.sh"
+
+    # Make sure build script is executable
+    ssh_cmd "$ip" "chmod +x $BUILD_SCRIPT 2>/dev/null || true" || true
+
+    # Start build in tmux session
     if ! ssh_cmd "$ip" \
-        "tmux new-session -d -s yocto-build bash -c \"
-             export PATH=\"\$HOME/.local/bin:\$PATH\" && \
-             cd $YOCTO_DIR && \
-             kas build --update $KAS_CONFIG 2>&1 | tee /tmp/yocto-build.log
-             exit \${PIPESTATUS[0]}
-         \""; then
+        "tmux new-session -d -s yocto-build bash $BUILD_SCRIPT '$KAS_CONFIG' '$YOCTO_DIR'"; then
         log_error "Failed to start build session via SSH"
         exit 1
     fi

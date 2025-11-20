@@ -31,9 +31,6 @@ build-image: instance-start ## Build full Yocto image on EC2
 	@$(REMOTE_DIR)/scripts/build-image.sh start
 	@$(REMOTE_DIR)/scripts/build-image.sh watch
 
-build-post-image: ## Post-build operations on EC2
-	@$(REMOTE_DIR)/scripts/post-build-image.sh
-
 build-status: ## Check if build session is running (does not auto-start instance)
 	@$(REMOTE_DIR)/scripts/build-image.sh status
 

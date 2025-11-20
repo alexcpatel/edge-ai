@@ -71,24 +71,16 @@ main() {
     # Session ended - check if build succeeded and record timestamp
     LOG_FILE="/tmp/yocto-build.log"
     SUCCESS_FILE="/home/ubuntu/yocto-tegra/.last-successful-build"
-    POST_BUILD_SCRIPT="/home/ubuntu/edge-ai/build/remote/scripts/post-build-image.sh"
-    
+
     if [ -f "$LOG_FILE" ]; then
         # Check if build succeeded (look for "Tasks Summary" with "all succeeded")
         if grep -q "Tasks Summary:.*all succeeded" "$LOG_FILE" 2>/dev/null; then
             log_info "Build succeeded! Recording timestamp..."
             date +%s > "$SUCCESS_FILE" 2>/dev/null || true
-            
-            # Run post-build script to create SD card image
-            if [ -f "$POST_BUILD_SCRIPT" ]; then
-                log_info "Running post-build script to create SD card image..."
-                bash "$POST_BUILD_SCRIPT" || {
-                    log_error "Post-build script failed, but build succeeded"
-                }
-            fi
+            # Note: Post-build is now handled in the build session itself
         fi
     fi
-    
+
     # Check if auto-stop flag is set
     if [ -f "$FLAG_FILE" ]; then
         log_info "Auto-stop flag found, stopping instance..."
