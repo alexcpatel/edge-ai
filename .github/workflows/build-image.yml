@@ -53,5 +53,5 @@ jobs:
           echo "EC2_USER=${{ env.EC2_USER }}" >> $GITHUB_ENV
 
       - name: Build image
-        run: make image-build
+        run: make build-image
 
