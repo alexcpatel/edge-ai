@@ -9,9 +9,10 @@ name: Build Yocto Image
 # 3. Ensure EC2 Instance Connect is enabled on the instance (Ubuntu 22.04 has it by default)
 
 on:
-  push:
-    branches:
-      - main
+  # Auto-run disabled - uncomment below to re-enable
+  # push:
+  #   branches:
+  #     - main
   workflow_dispatch:
     inputs:
       ref:

@@ -46,12 +46,13 @@ find_sdcard_image() {
     fi
 
     # Look for the SD card image matching our machine and image
+    # Support both .img.gz and .sdcard.gz extensions
     local image
-    image=$(find "$DOWNLOADS_DIR" -maxdepth 1 -name "*${YOCTO_IMAGE}-${YOCTO_MACHINE}*.img.gz" -type f 2>/dev/null | sort -r | head -1)
+    image=$(find "$DOWNLOADS_DIR" -maxdepth 1 \( -name "*${YOCTO_IMAGE}-${YOCTO_MACHINE}*.img.gz" -o -name "*${YOCTO_IMAGE}-${YOCTO_MACHINE}*.sdcard.gz" -o -name "*${YOCTO_IMAGE}*.img.gz" -o -name "*${YOCTO_IMAGE}*.sdcard.gz" \) -type f 2>/dev/null | sort -r | head -1)
 
     if [ -z "$image" ]; then
-        log_error "No SD card image found matching ${YOCTO_IMAGE}-${YOCTO_MACHINE}"
-        log_error "Expected filename pattern: *${YOCTO_IMAGE}-${YOCTO_MACHINE}*.img.gz"
+        log_error "No SD card image found matching ${YOCTO_IMAGE}"
+        log_error "Expected filename pattern: *${YOCTO_IMAGE}*.{img,sdcard}.gz"
         log_error "Please download it first: make download-image"
         log_error "Or specify the path: $0 /path/to/image.img.gz"
         exit 1
@@ -95,32 +96,49 @@ main() {
     compressed_image=$(find_sdcard_image "$image_path")
     log_info "Using SD card image: $(basename "$compressed_image")"
 
-    # Decompress the image to a temporary location
-    local tmpdir
-    tmpdir=$(mktemp -d)
-    trap 'log_info "Cleaning up temporary directory..."; rm -rf "$tmpdir"' EXIT
+    # Use a cache directory for decompressed images
+    local cache_dir="${TMPDIR:-/tmp}/qemu-image-cache"
+    mkdir -p "$cache_dir"
 
-    log_info "Decompressing SD card image..."
     local img_name
     img_name=$(basename "$compressed_image" .gz)
-    local sdcard_image="$tmpdir/$img_name"
+    local sdcard_image="$cache_dir/$img_name"
 
-    gunzip -c "$compressed_image" > "$sdcard_image"
+    # Check if we need to decompress
+    local need_decompress=true
+    if [ -f "$sdcard_image" ]; then
+        # Check if compressed file is newer than decompressed file
+        if [ "$compressed_image" -ot "$sdcard_image" ]; then
+            need_decompress=false
+            log_info "Using cached decompressed image (source unchanged)"
+        else
+            log_info "Source image updated, will decompress"
+        fi
+    fi
 
-    log_success "SD card image ready: $img_name"
+    if [ "$need_decompress" = true ]; then
+        log_info "Decompressing SD card image..."
+        gunzip -c "$compressed_image" > "$sdcard_image"
+        log_success "SD card image ready: $img_name"
+    else
+        log_success "SD card image ready (cached): $img_name"
+    fi
 
     # QEMU configuration
     # Jetson Orin Nano specs:
-    # - ARM Cortex-A78AE cores (8 cores)
+    # - ARM Cortex-A78AE cores (6 cores)
     # - 8GB RAM (we'll use 4GB for QEMU)
     # - ARMv8.2-A architecture
+    # Note: QEMU doesn't support cortex-a78, so we use cortex-a76 (closest available)
 
     local qemu_memory="${QEMU_MEMORY:-4096}"
     local qemu_cpus="${QEMU_CPUS:-4}"
     local qemu_machine="${QEMU_MACHINE:-virt}"
+    local qemu_cpu="${QEMU_CPU:-cortex-a76}"
 
     log_info "Starting QEMU..."
     log_info "  Machine: $qemu_machine"
+    log_info "  CPU: $qemu_cpu (Jetson uses Cortex-A78AE, QEMU uses closest available)"
     log_info "  Memory: ${qemu_memory}M"
     log_info "  CPUs: $qemu_cpus"
     log_info "  Disk: $sdcard_image"
@@ -144,7 +162,7 @@ main() {
     # On Apple Silicon (M1/M2/M3), QEMU runs natively and can efficiently emulate ARM64
     qemu-system-aarch64 \
         -machine "$qemu_machine",accel=tcg \
-        -cpu cortex-a78 \
+        -cpu "$qemu_cpu" \
         -smp "$qemu_cpus" \
         -m "${qemu_memory}M" \
         -drive file="$sdcard_image",format=raw,if=sd,id=sd0 \
