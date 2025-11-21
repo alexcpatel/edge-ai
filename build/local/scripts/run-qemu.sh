@@ -165,7 +165,7 @@ main() {
         -cpu "$qemu_cpu" \
         -smp "$qemu_cpus" \
         -m "${qemu_memory}M" \
-        -drive file="$sdcard_image",format=raw,if=sd,id=sd0 \
+        -drive file="$sdcard_image",format=raw,if=virtio,id=disk0 \
         -netdev user,id=net0 \
         -device virtio-net-device,netdev=net0 \
         -nographic \
