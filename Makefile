@@ -67,10 +67,6 @@ clean-package: ## Clean a specific package (usage: make clean-package PACKAGE=sw
 download-sdk: ## Download Yocto SDK from EC2 (requires instance running)
 	@$(REMOTE_DIR)/scripts/download-sdk.sh
 
-# Artifact management
-download-image: ## Download SD card image from EC2 to Downloads folder (requires instance running)
-	@$(REMOTE_DIR)/scripts/download-image.sh
-
 # Local Jetson flashing
 download-tegraflash: ## Download tegraflash archive from EC2 (required for flashing)
 	@$(REMOTE_DIR)/scripts/download-tegraflash.sh

@@ -363,9 +363,6 @@ class YoctoBuilderPanel {
                         // Update UI to reflect change
                         this.update();
                         break;
-                    case 'downloadArtifacts':
-                        this.handleDownloadArtifacts();
-                        break;
                     case 'refresh':
                         this.update();
                         break;
@@ -516,12 +513,8 @@ class YoctoBuilderPanel {
         `;
         html = html.replace(/\{\{STOP_ON_COMPLETE\}\}/g, stopOnCompleteHtml);
 
-        // Download artifacts button - only show if no errors and there's a successful build
-        const hasErrors = buildStatus.errors && buildStatus.errors.length > 0;
-        const hasSuccessfulBuild = !!buildStatus.lastSuccessfulBuild;
-        const downloadButtonHtml = (!hasErrors && hasSuccessfulBuild) ?
-            '<button class="download-link" onclick="downloadArtifacts()">⬇ Download Image</button>' : '';
-        html = html.replace(/\{\{DOWNLOAD_ARTIFACTS_BUTTON\}\}/g, downloadButtonHtml);
+        // Download artifacts button - removed
+        html = html.replace(/\{\{DOWNLOAD_ARTIFACTS_BUTTON\}\}/g, '');
 
         // Build elapsed time section - pass elapsed seconds for client-side incrementing
         const elapsedHtml = buildStatus.elapsed ? `
@@ -740,16 +733,6 @@ class YoctoBuilderPanel {
         return status;
     }
 
-    private handleDownloadArtifacts(): void {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
-            vscode.window.showErrorMessage('No workspace folder found');
-            return;
-        }
-
-        // Run download command - downloads SD card image to Downloads folder
-        runCommand('make download-image', 'Yocto Builder - Download Image');
-    }
 
     public dispose() {
         YoctoBuilderPanel.currentPanel = undefined;
