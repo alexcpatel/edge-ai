@@ -87,6 +87,11 @@ main() {
     local image_path="${1:-}"
 
     log_info "Preparing QEMU environment for Jetson Orin Nano..."
+    log_info ""
+    log_info "WARNING: Jetson SD card images contain hardware-specific bootloaders (L4T)"
+    log_info "         that may not boot in generic QEMU. This is a limitation of QEMU's"
+    log_info "         Jetson hardware support. For full functionality, use actual Jetson hardware."
+    log_info ""
 
     # Check QEMU is installed
     check_qemu
@@ -150,9 +155,25 @@ main() {
     log_info "Note: QEMU emulates generic ARM64 hardware, not Jetson-specific features"
     log_info "      (GPU, specific peripherals, etc. won't be available)"
     log_info ""
+    log_info "IMPORTANT: Jetson SD card images contain L4T bootloaders that require"
+    log_info "           Jetson hardware. They may not boot successfully in QEMU."
+    log_info "           For full functionality, use actual Jetson hardware."
+    log_info ""
     log_info "Press Ctrl+A then X to exit QEMU"
     log_info "Or use Ctrl+C in another terminal"
     log_info ""
+
+    # Check for UEFI firmware (required for virt machine on macOS)
+    local uefi_firmware
+    uefi_firmware=$(find /opt/homebrew/Cellar/qemu -name "edk2-aarch64-code.fd" 2>/dev/null | sort -V | tail -1)
+
+    if [ -z "$uefi_firmware" ]; then
+        log_error "UEFI firmware not found. QEMU virt machine requires UEFI firmware to boot."
+        log_info "Install QEMU with: brew install qemu"
+        exit 1
+    fi
+
+    log_info "Using UEFI firmware: $(basename "$uefi_firmware")"
 
     # Run QEMU
     # Note: For Jetson Orin Nano, we use virt machine type which is generic ARM64
@@ -160,15 +181,25 @@ main() {
     # but it should be sufficient for basic testing of the Yocto image
     #
     # On Apple Silicon (M1/M2/M3), QEMU runs natively and can efficiently emulate ARM64
+    # Use "max" CPU to get best available features (closer to A78AE than A76)
+    local qemu_cpu_actual="${QEMU_CPU:-max}"
+
+    if [[ "${DEBUG:-}" == "1" ]]; then
+        log_info "DEBUG: QEMU command will use CPU: $qemu_cpu_actual"
+        log_info "DEBUG: Adding debug output (use DEBUG=1 to see this)"
+    fi
+
     qemu-system-aarch64 \
         -machine "$qemu_machine",accel=tcg \
-        -cpu "$qemu_cpu" \
+        -cpu "$qemu_cpu_actual" \
         -smp "$qemu_cpus" \
         -m "${qemu_memory}M" \
         -drive file="$sdcard_image",format=raw,if=none,id=disk0 \
         -device virtio-blk-pci,drive=disk0 \
         -netdev user,id=net0 \
         -device virtio-net-device,netdev=net0 \
+        -bios "$uefi_firmware" \
+        ${DEBUG:+ -d guest_errors,unimp} \
         -nographic \
         -serial stdio \
         -monitor none \
