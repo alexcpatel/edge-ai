@@ -71,6 +71,12 @@ download-sdk: ## Download Yocto SDK from EC2 (requires instance running)
 download-image: ## Download SD card image from EC2 to Downloads folder (requires instance running)
 	@$(REMOTE_DIR)/scripts/download-image.sh
 
-# Local QEMU emulation
-run-qemu: ## Run completed Yocto build in QEMU (usage: make run-qemu [IMAGE=/path/to/image.img.gz])
-	@$(LOCAL_DIR)/scripts/run-qemu.sh $(IMAGE)
+# Local Jetson flashing
+download-tegraflash: ## Download tegraflash archive from EC2 (required for flashing)
+	@$(LOCAL_DIR)/scripts/download-tegraflash.sh
+
+flash-usb: download-tegraflash ## Flash Jetson via USB (usage: make flash-usb [--spi-only])
+	@$(LOCAL_DIR)/scripts/flash-usb.sh "$(ARGS)"
+
+flash-sdcard: download-tegraflash ## Flash SD card (usage: make flash-sdcard [DEVICE=/dev/disk2])
+	@$(LOCAL_DIR)/scripts/flash-sdcard.sh "$(DEVICE)"
