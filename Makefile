@@ -73,7 +73,7 @@ download-image: ## Download SD card image from EC2 to Downloads folder (requires
 
 # Local Jetson flashing
 download-tegraflash: ## Download tegraflash archive from EC2 (required for flashing)
-	@$(LOCAL_DIR)/scripts/download-tegraflash.sh
+	@$(REMOTE_DIR)/scripts/download-tegraflash.sh
 
 flash-usb: download-tegraflash ## Flash Jetson via USB (usage: make flash-usb [--spi-only])
 	@$(LOCAL_DIR)/scripts/flash-usb.sh "$(ARGS)"
