@@ -29,3 +29,4 @@ Thumbs.db
 
 # Local config (may contain secrets)
 build/infrastructure/config/
+build/controller/config/controller-config.local.sh

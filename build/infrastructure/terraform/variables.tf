@@ -63,13 +63,13 @@ variable "instance_key_name" {
 variable "instance_subnet_id" {
   description = "Subnet ID for the EC2 instance"
   type        = string
-  default     = "subnet-b8d56ed3"
+  # No default - must be set in terraform.tfvars (gitignored)
 }
 
 variable "vpc_id" {
   description = "VPC ID for the security group"
   type        = string
-  default     = "vpc-c725b5ac"
+  # No default - must be set in terraform.tfvars (gitignored)
 }
 
 # Terraform backend configuration
