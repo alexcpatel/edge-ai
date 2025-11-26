@@ -3,6 +3,7 @@
 
 REMOTE_DIR := build/remote
 LOCAL_DIR := build/local
+CONTROLLER_DIR := build/controller
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -76,3 +77,23 @@ flash-usb: download-tegraflash ## Flash Jetson via USB (usage: make flash-usb [-
 
 flash-sdcard: download-tegraflash ## Flash SD card (usage: make flash-sdcard [DEVICE=/dev/disk2])
 	@$(LOCAL_DIR)/scripts/flash-sdcard.sh "$(DEVICE)"
+
+# Controller (Raspberry Pi) management
+controller-setup: ## Set up controller remotely (installs Docker, creates directories)
+	@$(CONTROLLER_DIR)/scripts/setup-controller-remote.sh
+
+controller-update: ## Update controller software (Docker image + scripts)
+	@$(CONTROLLER_DIR)/scripts/update-controller.sh
+
+controller-deploy-docker: ## Deploy Docker image to controller
+	@$(CONTROLLER_DIR)/scripts/deploy-docker-image.sh
+
+controller-deploy-scripts: ## Deploy scripts to controller
+	@$(CONTROLLER_DIR)/scripts/deploy-scripts.sh
+
+# Controller Jetson flashing
+controller-push-tegraflash: ## Push tegraflash archive from EC2 to controller
+	@$(CONTROLLER_DIR)/scripts/download-tegraflash.sh
+
+controller-flash-usb: controller-push-tegraflash ## Flash Jetson via USB from controller (usage: make controller-flash-usb [ARGS=--spi-only])
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh "$(ARGS)"
