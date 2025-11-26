@@ -107,20 +107,30 @@ if [ "$(uname -m)" != "x86_64" ] && [ "$(uname -m)" != "amd64" ]; then
     fi
 fi
 
+# Check for NVIDIA USB device before running
+echo "Checking for NVIDIA USB device on host..."
+if ! lsusb | grep -i nvidia >/dev/null 2>&1; then
+    echo "WARNING: No NVIDIA USB device detected. Make sure device is in recovery mode." >&2
+    echo "Run 'lsusb | grep -i nvidia' to verify device is connected." >&2
+fi
+
 # Run Docker container with explicit amd64 platform (required for tegraflash tools)
+# Use -v /dev:/dev to give full access to USB devices (with --privileged for permissions)
 docker run --rm $DOCKER_TTY_FLAGS \
     --platform linux/amd64 \
     --privileged \
     -v "$EXTRACT_DIR:/workspace" \
+    -v /dev:/dev \
     -w /workspace \
-    --device=/dev/bus/usb \
     "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" bash -c "
     echo 'Container architecture:' \$(uname -m)
+    echo 'Checking USB devices in container...'
+    lsusb | grep -i nvidia || echo 'No NVIDIA device found in container'
     echo 'Binary architecture:'
-    file /workspace/tegrarcm_v2 || echo 'tegrarcm_v2 not found'
+    file /workspace/tegrarcm_v2 2>/dev/null || echo 'tegrarcm_v2 not found'
     echo '---'
-    apt-get update -qq && \
-    apt-get install -y -qq device-tree-compiler python3 sudo udev usbutils file >/dev/null 2>&1 && \
+    # All packages should already be installed in the Docker image
+    # Just run the flash script
     sudo ./doflash.sh
 "
 
