@@ -25,14 +25,15 @@ log_error() { echo -e "${RED}$*${NC}"; }
 log_step() { echo -e "${BLUE}${BOLD}→ $*${NC}"; }
 
 # Check if controller is reachable via NordVPN Meshnet
+# Uses SSH test instead of ping (more reliable with Meshnet)
 check_controller_connection() {
-    if ! ping -c 1 -W 2 "$CONTROLLER_HOSTNAME" >/dev/null 2>&1; then
-        log_error "Cannot reach controller at $CONTROLLER_HOSTNAME"
+    if ! ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no "${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}" "true" 2>/dev/null; then
+        log_error "Cannot reach controller at ${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}"
         log_info "Make sure:"
         log_info "  1. NordVPN Meshnet is enabled on both your laptop and Raspberry Pi"
         log_info "  2. Both devices are connected to Meshnet (nordvpn meshnet peer list)"
         log_info "  3. CONTROLLER_HOSTNAME is set correctly in controller-config.sh"
-        log_info "  4. Check Meshnet status: nordvpn meshnet peer list"
+        log_info "  4. SSH works: ssh ${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}"
         exit 1
     fi
 }

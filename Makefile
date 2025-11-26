@@ -79,6 +79,9 @@ flash-sdcard: download-tegraflash ## Flash SD card (usage: make flash-sdcard [DE
 	@$(LOCAL_DIR)/scripts/flash-sdcard.sh "$(DEVICE)"
 
 # Controller (Raspberry Pi) management
+controller-setup-ssh-keys: ## Set up SSH key authentication to controller
+	@$(CONTROLLER_DIR)/scripts/setup-ssh-keys.sh
+
 controller-setup: ## Set up controller remotely (installs Docker, creates directories)
 	@$(CONTROLLER_DIR)/scripts/setup-controller-remote.sh
 

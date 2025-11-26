@@ -5,7 +5,7 @@
 # NordVPN Meshnet Configuration
 # Set the Meshnet hostname or IP of your Raspberry Pi
 # Find it with: nordvpn meshnet peer list
-export CONTROLLER_HOSTNAME="controller"  # Change to your Meshnet hostname or IP
+export CONTROLLER_HOSTNAME="diamondshocked-alps.nord"  # Meshnet hostname (can also use IP)
 export CONTROLLER_USER="controller"  # Default Raspberry Pi user, change if different
 
 # Controller paths
