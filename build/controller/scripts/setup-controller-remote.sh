@@ -8,6 +8,9 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Set SETUP_SCRIPT path before sourcing (use absolute path to be safe)
+SETUP_SCRIPT="$(cd "$SCRIPT_DIR" && pwd)/setup-controller.sh"
+
 source "$SCRIPT_DIR/lib/controller-common.sh"
 
 log_info ""
@@ -33,8 +36,15 @@ log_success "SSH connection verified"
 
 # Copy setup script to controller
 log_step "Copying setup script to controller..."
-SETUP_SCRIPT="$SCRIPT_DIR/setup-controller.sh"
 TMP_SCRIPT="/tmp/setup-controller-$$.sh"
+
+# Verify setup script exists
+if [ ! -f "$SETUP_SCRIPT" ]; then
+    log_error "Setup script not found: $SETUP_SCRIPT"
+    log_info "Looking for: $SETUP_SCRIPT"
+    log_info "Script directory: $SCRIPT_DIR"
+    exit 1
+fi
 
 # Use rsync directly (bypass check_controller_connection for setup phase)
 rsync -e "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10" \
