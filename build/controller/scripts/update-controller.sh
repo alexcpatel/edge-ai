@@ -7,6 +7,12 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Save script paths before sourcing (which may change SCRIPT_DIR)
+DEPLOY_SCRIPTS="$SCRIPT_DIR/deploy-scripts.sh"
+DEPLOY_DOCKER="$SCRIPT_DIR/deploy-docker-image.sh"
+
+source "$SCRIPT_DIR/lib/controller-common.sh"
+
 log_info ""
 log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
 log_info "${BOLD}  Updating Controller Software${NC}"
@@ -14,10 +20,10 @@ log_info "${BOLD}═════════════════════
 log_info ""
 
 # Deploy scripts first (needed for Docker deployment)
-"$SCRIPT_DIR/deploy-scripts.sh"
+"$DEPLOY_SCRIPTS"
 
 # Deploy Docker image
-"$SCRIPT_DIR/deploy-docker-image.sh"
+"$DEPLOY_DOCKER"
 
 log_info ""
 log_success "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
