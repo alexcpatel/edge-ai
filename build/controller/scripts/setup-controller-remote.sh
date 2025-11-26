@@ -7,7 +7,6 @@ IFS=$'\n\t'
 # Usage: ./setup-controller-remote.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 source "$SCRIPT_DIR/lib/controller-common.sh"
 
@@ -22,8 +21,8 @@ log_step "Testing connection to controller..."
 if ! ping -c 1 -W 2 "$CONTROLLER_HOSTNAME" >/dev/null 2>&1; then
     log_error "Cannot reach controller at $CONTROLLER_HOSTNAME"
     log_info "Make sure:"
-    log_info "  1. Tailscale is running on both devices"
-    log_info "  2. Both devices are on the same Tailscale network"
+    log_info "  1. NordVPN Meshnet is enabled on both devices"
+    log_info "  2. Both devices are connected to Meshnet (nordvpn meshnet peer list)"
     log_info "  3. CONTROLLER_HOSTNAME is set correctly in controller-config.sh"
     exit 1
 fi

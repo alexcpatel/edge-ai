@@ -67,15 +67,19 @@ log_info "Docker image will be deployed from your laptop using:"
 log_info "  make controller-update"
 log_info "This ensures the image is built with the latest code from your repository."
 
-# Check Tailscale
-log_step "Checking Tailscale..."
-if ! command -v tailscale &> /dev/null; then
-    log_info "Tailscale not found. Please install Tailscale:"
-    log_info "  curl -fsSL https://tailscale.com/install.sh | sh"
-    log_info "  sudo tailscale up"
+# Check NordVPN Meshnet
+log_step "Checking NordVPN Meshnet..."
+if ! command -v nordvpn &> /dev/null; then
+    log_info "NordVPN not found. Please install NordVPN:"
+    log_info "  curl -fsSL https://downloads.nordcdn.com/apps/linux/install.sh | sh"
+    log_info "  nordvpn login"
+    log_info "  nordvpn set meshnet on"
 else
-    log_success "Tailscale is installed"
-    log_info "Make sure Tailscale is running: sudo tailscale status"
+    log_success "NordVPN is installed"
+    log_info "Make sure Meshnet is enabled: nordvpn meshnet peer list"
+    if ! nordvpn meshnet peer list >/dev/null 2>&1; then
+        log_info "Enable Meshnet with: nordvpn set meshnet on"
+    fi
 fi
 
 log_info ""
@@ -84,10 +88,10 @@ log_success "${BOLD}  Setup Complete!${NC}"
 log_success "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
 log_info ""
 log_info "Next steps (on your laptop):"
-log_info "  1. Make sure Tailscale is running on both devices"
-log_info "  2. Note your Tailscale hostname: tailscale status | grep $(hostname)"
+log_info "  1. Make sure NordVPN Meshnet is enabled on both devices"
+log_info "  2. Find your Meshnet hostname/IP: nordvpn meshnet peer list"
 log_info "  3. Update CONTROLLER_HOSTNAME in build/controller/config/controller-config.sh"
-log_info "  4. Test connection from your laptop: ping <your-tailscale-hostname>"
+log_info "  4. Test connection from your laptop: ping <meshnet-hostname-or-ip>"
 log_info "  5. Deploy controller software: make controller-update"
 log_info ""
 

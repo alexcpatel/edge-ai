@@ -24,19 +24,20 @@ log_success() { echo -e "${GREEN}$*${NC}"; }
 log_error() { echo -e "${RED}$*${NC}"; }
 log_step() { echo -e "${BLUE}${BOLD}→ $*${NC}"; }
 
-# Check if controller is reachable via Tailscale
+# Check if controller is reachable via NordVPN Meshnet
 check_controller_connection() {
     if ! ping -c 1 -W 2 "$CONTROLLER_HOSTNAME" >/dev/null 2>&1; then
         log_error "Cannot reach controller at $CONTROLLER_HOSTNAME"
         log_info "Make sure:"
-        log_info "  1. Tailscale is running on both your laptop and Raspberry Pi"
-        log_info "  2. Both devices are on the same Tailscale network"
+        log_info "  1. NordVPN Meshnet is enabled on both your laptop and Raspberry Pi"
+        log_info "  2. Both devices are connected to Meshnet (nordvpn meshnet peer list)"
         log_info "  3. CONTROLLER_HOSTNAME is set correctly in controller-config.sh"
+        log_info "  4. Check Meshnet status: nordvpn meshnet peer list"
         exit 1
     fi
 }
 
-# SSH to controller via Tailscale
+# SSH to controller via NordVPN Meshnet
 controller_ssh() {
     check_controller_connection
     ssh -o StrictHostKeyChecking=no \
@@ -44,7 +45,7 @@ controller_ssh() {
         "${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}" "$@"
 }
 
-# Rsync to controller via Tailscale
+# Rsync to controller via NordVPN Meshnet
 controller_rsync() {
     check_controller_connection
     rsync -e "ssh -o StrictHostKeyChecking=no" \

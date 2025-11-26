@@ -36,7 +36,7 @@ log_info "Setting up directories on controller..."
 controller_cmd "mkdir -p $CONTROLLER_TEGRAFLASH_DIR"
 
 # Stream directly from EC2 to controller via laptop (no local staging)
-log_info "Streaming directly from EC2 to controller (via Tailscale)..."
+log_info "Streaming directly from EC2 to controller (via NordVPN Meshnet)..."
 
 # Use rsync to stream from EC2 through laptop to controller
 # This avoids staging the file locally on the laptop
@@ -55,7 +55,7 @@ if [ -z "$temp_key" ]; then
 fi
 
 # Stream from EC2 to controller using rsync through the laptop
-# rsync from EC2 (using temp key) piped to controller (using Tailscale)
+# rsync from EC2 (using temp key) piped to controller (using NordVPN Meshnet)
 log_info "Downloading and streaming to controller..."
 rsync -e "ssh -i $temp_key -o StrictHostKeyChecking=no" \
     -avz --progress \

@@ -2,9 +2,10 @@
 # Raspberry Pi Controller Configuration
 # Edit these values according to your setup
 
-# Tailscale Configuration
-# Set the Tailscale hostname or IP of your Raspberry Pi
-export CONTROLLER_HOSTNAME="controller"  # Change to your Tailscale hostname
+# NordVPN Meshnet Configuration
+# Set the Meshnet hostname or IP of your Raspberry Pi
+# Find it with: nordvpn meshnet peer list
+export CONTROLLER_HOSTNAME="controller"  # Change to your Meshnet hostname or IP
 export CONTROLLER_USER="controller"  # Default Raspberry Pi user, change if different
 
 # Controller paths

@@ -8,13 +8,13 @@ The controller setup allows you to:
 
 - Flash Jetson devices remotely via USB using a Raspberry Pi
 - Download tegraflash archives directly to the Raspberry Pi
-- Manage all flashing operations from your laptop via Tailscale
+- Manage all flashing operations from your laptop via NordVPN Meshnet
 - Easily update controller software (Docker images and scripts)
 
 ## Architecture
 
 ```
-┌─────────────┐         Tailscale          ┌──────────────┐
+┌─────────────┐      NordVPN Meshnet       ┌──────────────┐
 │   Laptop    │ ◄─────────────────────────► │ Raspberry Pi │
 │             │                              │  Controller  │
 │  - Build    │                              │              │
@@ -31,20 +31,44 @@ The controller setup allows you to:
 
 ## Initial Setup
 
-### 1. Install Tailscale on Raspberry Pi
+### 1. Install NordVPN on Raspberry Pi
 
 ```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
+# Install NordVPN
+curl -fsSL https://downloads.nordcdn.com/apps/linux/install.sh | sh
+
+# Login to your NordVPN account
+nordvpn login
+
+# Enable Meshnet
+nordvpn set meshnet on
+
+# Verify Meshnet is enabled
+nordvpn meshnet peer list
 ```
 
-Note your Tailscale hostname. In your case, it's `controller`.
+Note your Meshnet hostname or IP from the peer list.
 
-### 2. Install Tailscale on Your Laptop
+### 2. Install NordVPN on Your Laptop
 
-Install Tailscale on your development laptop and ensure both devices are on the same Tailscale network.
+Install NordVPN on your development laptop and enable Meshnet:
 
-### 3. Set Up SSH Over Tailscale
+```bash
+# Install NordVPN (if not already installed)
+# macOS: brew install --cask nordvpn
+# Linux: curl -fsSL https://downloads.nordcdn.com/apps/linux/install.sh | sh
+
+# Login
+nordvpn login
+
+# Enable Meshnet
+nordvpn set meshnet on
+
+# Verify both devices can see each other
+nordvpn meshnet peer list
+```
+
+### 3. Set Up SSH Over Meshnet
 
 You need passwordless SSH access from your laptop to the Raspberry Pi. Choose one method:
 
@@ -84,9 +108,22 @@ If you prefer to use passwords, the scripts will prompt you each time. This work
 Edit `build/controller/config/controller-config.sh` on your laptop:
 
 ```bash
-export CONTROLLER_HOSTNAME="controller"  # Your Tailscale hostname
+export CONTROLLER_HOSTNAME="controller"  # Your Meshnet hostname or IP
 export CONTROLLER_USER="controller"  # Raspberry Pi username
 ```
+
+**Finding your Meshnet hostname/IP:**
+
+On your laptop, run:
+
+```bash
+nordvpn meshnet peer list
+```
+
+Look for your Raspberry Pi in the list. You can use either:
+
+- The hostname (e.g., `controller`)
+- The Meshnet IP address (e.g., `100.x.x.x`)
 
 ### 5. Set Up Raspberry Pi (Choose One Method)
 
@@ -223,27 +260,45 @@ make controller-deploy-scripts   # Update scripts only
 
 ### Cannot Connect to Controller
 
-1. Verify Tailscale is running on both devices:
+1. Verify NordVPN Meshnet is enabled on both devices:
 
    ```bash
    # On laptop
-   tailscale status
+   nordvpn meshnet peer list
 
-   # On Raspberry Pi
-   sudo tailscale status
+   # On Raspberry Pi (via SSH or direct access)
+   nordvpn meshnet peer list
    ```
 
-2. Test connectivity:
+2. If Meshnet is not enabled:
 
    ```bash
-   ping <controller-hostname>
+   # Enable Meshnet
+   nordvpn set meshnet on
+
+   # Check status
+   nordvpn meshnet peer list
    ```
 
-3. Check SSH access:
+3. Test connectivity:
 
    ```bash
-   ssh pi@<controller-hostname>
+   # Use the hostname or IP from meshnet peer list
+   ping controller
+   # Or ping the Meshnet IP directly
    ```
+
+4. Check SSH access:
+
+   ```bash
+   ssh controller@controller
+   ```
+
+5. If SSH fails, verify:
+   - SSH server is running on Pi: `sudo systemctl status ssh`
+   - Firewall allows SSH: `sudo ufw status` (if using ufw)
+   - Meshnet IP is correct: `nordvpn meshnet peer list` on Pi
+   - Both devices are logged into the same NordVPN account
 
 ### Docker Image Not Found
 
