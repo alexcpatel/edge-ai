@@ -79,24 +79,24 @@ flash-sdcard: download-tegraflash ## Flash SD card (usage: make flash-sdcard [DE
 	@$(LOCAL_DIR)/scripts/flash-sdcard.sh "$(DEVICE)"
 
 # Controller (Raspberry Pi) management
-controller-setup-ssh-keys: ## Set up SSH key authentication to controller
+controller-setup-ssh-keys: ## Set up SSH key authentication to controller (one-time setup)
 	@$(CONTROLLER_DIR)/scripts/setup-ssh-keys.sh
 
-controller-setup: ## Set up controller remotely (installs Docker, creates directories)
+controller-setup: ## Set up controller remotely (installs Docker, creates directories - one-time setup)
 	@$(CONTROLLER_DIR)/scripts/setup-controller-remote.sh
 
-controller-update: ## Update controller software (Docker image + scripts)
+controller-update: ## Update everything: Docker image + scripts (use this after making changes)
 	@$(CONTROLLER_DIR)/scripts/update-controller.sh
 
-controller-deploy-docker: ## Deploy Docker image to controller
+controller-deploy-docker: ## Deploy only Docker image (use when Dockerfile changed, scripts unchanged)
 	@$(CONTROLLER_DIR)/scripts/deploy-docker-image.sh
 
-controller-deploy-scripts: ## Deploy scripts to controller
+controller-deploy-scripts: ## Deploy only scripts (use when scripts changed, Docker image unchanged)
 	@$(CONTROLLER_DIR)/scripts/deploy-scripts.sh
 
 # Controller Jetson flashing
 controller-push-tegraflash: ## Push tegraflash archive from EC2 to controller
-	@$(CONTROLLER_DIR)/scripts/download-tegraflash.sh
+	@$(CONTROLLER_DIR)/scripts/push-tegraflash.sh
 
 controller-flash-usb: ## Flash Jetson via USB from controller
 	@$(CONTROLLER_DIR)/scripts/flash-usb.sh

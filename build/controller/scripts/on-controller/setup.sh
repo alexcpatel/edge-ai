@@ -49,6 +49,24 @@ else
     log_success "Docker is installed"
 fi
 
+# Check for QEMU emulation support (needed for x86_64 containers on ARM)
+log_step "Checking for QEMU emulation support..."
+if [ "$(uname -m)" != "x86_64" ] && [ "$(uname -m)" != "amd64" ]; then
+    if ! docker run --rm --platform linux/amd64 ubuntu:22.04 uname -m >/dev/null 2>&1; then
+        log_info "QEMU emulation not available. Installing qemu-user-static..."
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq qemu-user-static binfmt-support
+            log_success "QEMU emulation installed"
+        else
+            log_error "Cannot install QEMU automatically. Please install qemu-user-static manually."
+            log_info "On Debian/Ubuntu: sudo apt-get install qemu-user-static binfmt-support"
+        fi
+    else
+        log_success "QEMU emulation is working"
+    fi
+fi
+
 # Check if user is in docker group
 if ! groups | grep -q docker; then
     log_info "Adding user to docker group..."

@@ -9,7 +9,7 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Set SETUP_SCRIPT path before sourcing (use absolute path to be safe)
-SETUP_SCRIPT="$(cd "$SCRIPT_DIR" && pwd)/setup-controller.sh"
+SETUP_SCRIPT="$(cd "$SCRIPT_DIR" && pwd)/on-controller/setup.sh"
 
 source "$SCRIPT_DIR/lib/controller-common.sh"
 
@@ -36,7 +36,6 @@ log_success "SSH connection verified"
 
 # Copy setup script to controller
 log_step "Copying setup script to controller..."
-SETUP_SCRIPT="$(cd "$SCRIPT_DIR" && pwd)/on-controller/setup.sh"
 TMP_SCRIPT="/tmp/setup-controller-$$.sh"
 
 # Verify setup script exists

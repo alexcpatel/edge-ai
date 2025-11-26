@@ -7,6 +7,9 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Save absolute paths before sourcing (which may change SCRIPT_DIR)
+FLASH_SCRIPT_LOCAL="$(cd "$SCRIPT_DIR" && pwd)/on-controller/flash-device.sh"
+
 source "$SCRIPT_DIR/lib/controller-common.sh"
 
 log_info ""
@@ -64,9 +67,13 @@ log_info "This may take several minutes. Please be patient..."
 log_info ""
 
 # Deploy flash script to controller if needed
-FLASH_SCRIPT_NAME="flash-device.sh"
-FLASH_SCRIPT_LOCAL="$SCRIPT_DIR/on-controller/$FLASH_SCRIPT_NAME"
-FLASH_SCRIPT_REMOTE="$CONTROLLER_BASE_DIR/scripts/on-controller/$FLASH_SCRIPT_NAME"
+FLASH_SCRIPT_REMOTE="$CONTROLLER_BASE_DIR/scripts/on-controller/flash-device.sh"
+
+# Verify script exists
+if [ ! -f "$FLASH_SCRIPT_LOCAL" ]; then
+    log_error "Flash script not found: $FLASH_SCRIPT_LOCAL"
+    exit 1
+fi
 
 log_step "Deploying flash script to controller..."
 controller_cmd "mkdir -p $CONTROLLER_BASE_DIR/scripts/on-controller"
@@ -75,7 +82,8 @@ controller_cmd "chmod +x $FLASH_SCRIPT_REMOTE"
 
 # Execute flashing on controller
 log_step "Executing flash on controller..."
-controller_cmd "bash $FLASH_SCRIPT_REMOTE \"$TEGRAFLASH_ARCHIVE\""
+log_info "Archive path: $TEGRAFLASH_ARCHIVE"
+controller_cmd "bash $FLASH_SCRIPT_REMOTE '$TEGRAFLASH_ARCHIVE'"
 
 log_info ""
 log_success "${BOLD}═══════════════════════════════════════════════════════════════${NC}"

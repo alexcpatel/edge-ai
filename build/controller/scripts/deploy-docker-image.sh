@@ -36,8 +36,24 @@ fi
 
 log_step "Building Docker image locally..."
 cd "$DOCKER_DIR"
-docker build -t "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" .
-log_success "Docker image built: $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"
+
+# Tegraflash scripts require x86_64/amd64 architecture
+# Build for amd64 even if running on ARM (Docker will use emulation)
+log_info "Building for x86_64/amd64 (required for tegraflash tools)..."
+
+# Use buildx if available for explicit platform specification
+if docker buildx version >/dev/null 2>&1; then
+    log_info "Using buildx to build for linux/amd64..."
+    # Create builder if it doesn't exist
+    docker buildx create --use --name multiarch 2>/dev/null || docker buildx use multiarch 2>/dev/null || true
+    docker buildx build --platform linux/amd64 -t "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" --load .
+else
+    log_info "Building with default docker build (will use host architecture)..."
+    log_info "Note: If buildx is not available, ensure Docker Desktop supports multi-arch"
+    docker build -t "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" .
+fi
+
+log_success "Docker image built: $DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG (linux/amd64)"
 
 # Save Docker image to tar file
 TMPDIR=$(mktemp -d)

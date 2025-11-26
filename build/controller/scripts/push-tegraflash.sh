@@ -2,8 +2,8 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Download tegraflash archive from EC2 directly to Raspberry Pi controller
-# This script runs on your laptop and orchestrates the download to the controller
+# Push tegraflash archive from EC2 directly to Raspberry Pi controller
+# This script runs on your laptop and orchestrates pushing the archive to the controller
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -14,7 +14,7 @@ EC2_INSTANCE_CONNECT="$REPO_ROOT/build/remote/scripts/lib/ec2-instance-connect.s
 source "$SCRIPT_DIR/lib/controller-common.sh"
 source "$REPO_ROOT/build/remote/scripts/lib/common.sh"
 
-log_info "Downloading tegraflash archive from EC2 directly to Raspberry Pi controller..."
+log_info "Pushing tegraflash archive from EC2 to Raspberry Pi controller..."
 
 # Get EC2 instance IP
 ip=$(get_instance_ip_or_exit)
@@ -57,14 +57,28 @@ if [ -z "$temp_key" ]; then
     exit 1
 fi
 
-# Stream from EC2 to controller using rsync through the laptop
-# rsync from EC2 (using temp key) piped to controller (using NordVPN Meshnet)
-log_info "Downloading and streaming to controller..."
-# Use --out-format='' to suppress progress output that could corrupt the binary stream
-rsync -e "ssh -i $temp_key -o StrictHostKeyChecking=no" \
-    -avz --out-format='' \
+# Stream from EC2 to controller using scp through the laptop
+# Stage temporarily on laptop, then transfer to controller to avoid pipe corruption
+log_info "Downloading from EC2 to controller..."
+TMP_ARCHIVE=$(mktemp)
+trap "rm -f $TMP_ARCHIVE" EXIT
+
+# Download from EC2 to local temp file
+log_info "Downloading from EC2..."
+scp -i "$temp_key" -o StrictHostKeyChecking=no \
     "${EC2_USER}@${ip}:${TEGRAFLASH_ARCHIVE}" \
-    - | controller_ssh "cat > ${CONTROLLER_TEGRAFLASH_DIR}/${ARCHIVE_NAME}"
+    "$TMP_ARCHIVE"
+
+# Verify local file is valid
+if ! file "$TMP_ARCHIVE" | grep -q "gzip"; then
+    log_error "Downloaded file from EC2 is not a valid gzip archive"
+    file "$TMP_ARCHIVE" || true
+    exit 1
+fi
+
+# Transfer to controller using rsync (preserves binary)
+log_info "Transferring to controller..."
+controller_rsync "$TMP_ARCHIVE" "${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}:${CONTROLLER_TEGRAFLASH_DIR}/${ARCHIVE_NAME}"
 
 # Verify the file was transferred correctly
 log_info "Verifying archive on controller..."
@@ -77,5 +91,5 @@ fi
 # Clean up temp key
 rm -f "$temp_key"
 
-log_success "Tegraflash archive downloaded to controller: $CONTROLLER_TEGRAFLASH_DIR/$ARCHIVE_NAME"
+log_success "Tegraflash archive pushed to controller: $CONTROLLER_TEGRAFLASH_DIR/$ARCHIVE_NAME"
 
