@@ -213,11 +213,8 @@ This streams the archive from EC2 directly to the Raspberry Pi (via your laptop)
 2. Run the flash command from your laptop:
 
 ```bash
-# Full flash
+# Flash device
 make controller-flash-usb
-
-# SPI bootloader only (first-time setup)
-make controller-flash-usb ARGS=--spi-only
 ```
 
 The script will:

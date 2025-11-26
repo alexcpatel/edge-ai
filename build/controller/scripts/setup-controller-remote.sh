@@ -36,6 +36,7 @@ log_success "SSH connection verified"
 
 # Copy setup script to controller
 log_step "Copying setup script to controller..."
+SETUP_SCRIPT="$(cd "$SCRIPT_DIR" && pwd)/on-controller/setup.sh"
 TMP_SCRIPT="/tmp/setup-controller-$$.sh"
 
 # Verify setup script exists

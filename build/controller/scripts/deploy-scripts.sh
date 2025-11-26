@@ -19,15 +19,17 @@ log_info ""
 # Create controller scripts directory on controller
 log_step "Setting up directories on controller..."
 controller_cmd "mkdir -p $CONTROLLER_BASE_DIR/scripts/lib"
+controller_cmd "mkdir -p $CONTROLLER_BASE_DIR/scripts/on-controller"
 controller_cmd "mkdir -p $CONTROLLER_BASE_DIR/config"
 
-# Sync scripts directory
+# Sync scripts directory (exclude on-controller, synced separately)
 log_step "Syncing controller scripts..."
 CONTROLLER_SCRIPTS_DIR="$REPO_ROOT/build/controller/scripts"
 controller_rsync \
     --exclude='*.sh~' \
     --exclude='*.swp' \
     --exclude='.DS_Store' \
+    --exclude='on-controller/' \
     "$CONTROLLER_SCRIPTS_DIR/" \
     "${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}:${CONTROLLER_BASE_DIR}/scripts/"
 
@@ -41,10 +43,21 @@ controller_rsync \
     "$CONTROLLER_CONFIG_DIR/" \
     "${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}:${CONTROLLER_BASE_DIR}/config/"
 
+# Sync on-controller scripts (scripts that run on the Raspberry Pi)
+log_step "Syncing on-controller scripts..."
+ON_CONTROLLER_SCRIPTS_DIR="$REPO_ROOT/build/controller/scripts/on-controller"
+controller_rsync \
+    --exclude='*.sh~' \
+    --exclude='*.swp' \
+    --exclude='.DS_Store' \
+    "$ON_CONTROLLER_SCRIPTS_DIR/" \
+    "${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}:${CONTROLLER_BASE_DIR}/scripts/on-controller/"
+
 # Make scripts executable on controller
 log_step "Making scripts executable..."
-controller_cmd "chmod +x $CONTROLLER_BASE_DIR/scripts/*.sh"
+controller_cmd "chmod +x $CONTROLLER_BASE_DIR/scripts/*.sh 2>/dev/null || true"
 controller_cmd "chmod +x $CONTROLLER_BASE_DIR/scripts/lib/*.sh 2>/dev/null || true"
+controller_cmd "chmod +x $CONTROLLER_BASE_DIR/scripts/on-controller/*.sh 2>/dev/null || true"
 
 log_info ""
 log_success "${BOLD}═══════════════════════════════════════════════════════════════${NC}"

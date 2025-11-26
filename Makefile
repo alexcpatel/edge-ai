@@ -98,5 +98,5 @@ controller-deploy-scripts: ## Deploy scripts to controller
 controller-push-tegraflash: ## Push tegraflash archive from EC2 to controller
 	@$(CONTROLLER_DIR)/scripts/download-tegraflash.sh
 
-controller-flash-usb: controller-push-tegraflash ## Flash Jetson via USB from controller (usage: make controller-flash-usb [ARGS=--spi-only])
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh "$(ARGS)"
+controller-flash-usb: ## Flash Jetson via USB from controller
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh

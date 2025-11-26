@@ -8,6 +8,9 @@ IFS=$'\n\t'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
+# Save paths before sourcing (which may change directories)
+EC2_INSTANCE_CONNECT="$REPO_ROOT/build/remote/scripts/lib/ec2-instance-connect.sh"
+
 source "$SCRIPT_DIR/lib/controller-common.sh"
 source "$REPO_ROOT/build/remote/scripts/lib/common.sh"
 
@@ -40,7 +43,7 @@ log_info "Streaming directly from EC2 to controller (via NordVPN Meshnet)..."
 
 # Use rsync to stream from EC2 through laptop to controller
 # This avoids staging the file locally on the laptop
-source "$(dirname "${BASH_SOURCE[0]}")/../remote/scripts/lib/ec2-instance-connect.sh"
+source "$EC2_INSTANCE_CONNECT"
 instance_id=$(get_instance_id)
 if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
     log_error "Instance not found"

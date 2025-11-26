@@ -3,9 +3,6 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # Flash Jetson device via USB from Raspberry Pi controller
-# Usage: flash-usb.sh [--spi-only]
-#   --spi-only: Only flash SPI bootloader (for first-time setup)
-#
 # This script runs on your laptop and executes flashing on the controller
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,14 +51,9 @@ fi
 ARCHIVE_NAME=$(basename "$TEGRAFLASH_ARCHIVE")
 log_info "Using tegraflash archive: $ARCHIVE_NAME"
 
-# Determine flash command
+# Flash command
 FLASH_CMD="./doflash.sh"
-if [[ "$*" == *"--spi-only"* ]]; then
-    FLASH_CMD="./doflash.sh --spi-only"
-    log_info "Flashing SPI bootloader only (first-time setup)"
-else
-    log_info "Flashing entire device via USB"
-fi
+log_info "Flashing entire device via USB"
 
 log_info ""
 log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
@@ -71,36 +63,19 @@ log_info ""
 log_info "This may take several minutes. Please be patient..."
 log_info ""
 
-# Execute flashing on controller using Docker
-# Source config on controller to get Docker image name
-controller_cmd "bash -c '
-    source $CONTROLLER_BASE_DIR/config/controller-config.sh
-    # Extract tegraflash archive
-    TMPDIR=\$(mktemp -d)
-    trap \"rm -rf \\\$TMPDIR\" EXIT
+# Deploy flash script to controller if needed
+FLASH_SCRIPT_NAME="flash-device.sh"
+FLASH_SCRIPT_LOCAL="$SCRIPT_DIR/on-controller/$FLASH_SCRIPT_NAME"
+FLASH_SCRIPT_REMOTE="$CONTROLLER_BASE_DIR/scripts/on-controller/$FLASH_SCRIPT_NAME"
 
-    cd \\\$TMPDIR
-    tar -xzf $TEGRAFLASH_ARCHIVE
+log_step "Deploying flash script to controller..."
+controller_cmd "mkdir -p $CONTROLLER_BASE_DIR/scripts/on-controller"
+controller_rsync "$FLASH_SCRIPT_LOCAL" "${CONTROLLER_USER}@${CONTROLLER_HOSTNAME}:$FLASH_SCRIPT_REMOTE"
+controller_cmd "chmod +x $FLASH_SCRIPT_REMOTE"
 
-    if [ ! -f \"./doflash.sh\" ]; then
-        echo \"ERROR: doflash.sh not found in tegraflash archive\" >&2
-        exit 1
-    fi
-
-    chmod +x ./*.sh 2>/dev/null || true
-
-    # Run flashing in Docker container
-    docker run --rm -it \
-        --privileged \
-        -v \\\$TMPDIR:/workspace \
-        -w /workspace \
-        --device=/dev/bus/usb \
-        \$DOCKER_IMAGE_NAME:\$DOCKER_IMAGE_TAG bash -c \"
-        apt-get update -qq && \
-        apt-get install -y -qq device-tree-compiler python3 sudo udev usbutils >/dev/null 2>&1 && \
-        $FLASH_CMD
-    \"
-'"
+# Execute flashing on controller
+log_step "Executing flash on controller..."
+controller_cmd "bash $FLASH_SCRIPT_REMOTE \"$TEGRAFLASH_ARCHIVE\""
 
 log_info ""
 log_success "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
