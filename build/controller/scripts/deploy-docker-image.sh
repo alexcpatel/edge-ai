@@ -27,8 +27,8 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
-# Build Docker image locally
-DOCKER_DIR="$REPO_ROOT/build/controller/docker"
+# Build Docker image locally (using shared Dockerfile)
+DOCKER_DIR="$REPO_ROOT/build/docker"
 if [ ! -f "$DOCKER_DIR/Dockerfile" ]; then
     log_error "Dockerfile not found at $DOCKER_DIR/Dockerfile"
     exit 1
