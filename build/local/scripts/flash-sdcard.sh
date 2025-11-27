@@ -61,65 +61,73 @@ chmod +x ./*.sh 2>/dev/null || true
 SD_CARD_DEVICE="${1:-}"
 
 if [ -z "$SD_CARD_DEVICE" ]; then
-    # Create SD card image file
+    # Interactive device selection
     log_info ""
     log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    log_info "${BOLD}  CREATING SD CARD IMAGE FILE${NC}"
-    log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    log_info ""
-
-    # Check if Docker is running
-    if ! docker info >/dev/null 2>&1; then
-        log_error "Docker is not running. Please start Docker Desktop."
-        exit 1
-    fi
-
-    docker run --rm -it \
-        -v "$TMPDIR:/workspace" \
-        -w /workspace \
-        ubuntu:22.04 bash -c "
-        apt-get update -qq && \
-        apt-get install -y -qq device-tree-compiler >/dev/null 2>&1 && \
-        ./dosdcard.sh
-    "
-
-    SDCARD_IMG=$(find . -maxdepth 1 -name "*.sdcard" -type f | head -1)
-
-    if [ -z "$SDCARD_IMG" ]; then
-        log_error "SD card image not created"
-        exit 1
-    fi
-
-    # Move to Downloads folder
-    DOWNLOADS_DIR="$HOME/Downloads"
-    mkdir -p "$DOWNLOADS_DIR"
-    mv "$SDCARD_IMG" "$DOWNLOADS_DIR/"
-
-    log_success "SD card image created: $DOWNLOADS_DIR/$(basename "$SDCARD_IMG")"
-    log_info ""
-    log_info "To flash this image to an SD card, run:"
-    log_info "  make flash-sdcard DEVICE=/dev/diskX"
-    log_info ""
-    log_info "First, identify your SD card device using: diskutil list"
-else
-    # Flash directly to SD card
-    log_info ""
-    log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    log_info "${BOLD}  PRE-FLASHING SETUP - Follow these steps carefully${NC}"
+    log_info "${BOLD}  SELECT SD CARD DEVICE${NC}"
     log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
     log_info ""
     log_step "1. Insert the SD card into your Mac's SD card reader"
     log_info "   - Make sure the SD card is properly inserted"
     log_info ""
-    log_step "2. Identify the SD card device:"
-    log_info "   - Run: diskutil list"
-    log_info "   - Look for your SD card (usually appears as /dev/disk2, /dev/disk3, etc.)"
-    log_info "   - Note the device identifier"
+    log_info "Available disks:"
     log_info ""
-    log_step "3. Verify the device you specified: $SD_CARD_DEVICE"
+
+    # Get list of physical disks (exclude virtual/synthesized disks and internal disk)
+    AVAILABLE_DISKS=()
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^/dev/disk[0-9]+.*\(.*physical\) ]] && [[ ! "$line" =~ synthesized ]]; then
+            DISK=$(echo "$line" | awk '{print $1}')
+            # Skip the internal disk (usually disk0)
+            if [[ "$DISK" != "/dev/disk0" ]]; then
+                AVAILABLE_DISKS+=("$DISK")
+            fi
+        fi
+    done < <(diskutil list)
+
+    # Show all disks with details
+    diskutil list | grep -E "^/dev/disk" || true
     log_info ""
-    log_error "${BOLD}WARNING: This will ERASE ALL DATA on $SD_CARD_DEVICE${NC}"
-    log_error "Make absolutely sure this is the correct device!"
+
+    if [ ${#AVAILABLE_DISKS[@]} -eq 0 ]; then
+        log_error "No external disks found. Please insert your SD card and try again."
+        exit 1
+    fi
+
+    # Show detailed info for each candidate disk
+    log_info "Candidate SD card devices:"
+    INDEX=1
+    for disk in "${AVAILABLE_DISKS[@]}"; do
+        log_info ""
+        log_info "  [$INDEX] $disk"
+        diskutil info "$disk" 2>/dev/null | grep -E "(Device / Media Name|Disk Size|File System|Removable Media)" | head -4 || true
+        ((INDEX++))
+    done
+    log_info ""
+
+    # Prompt for selection
+    log_info "${YELLOW}Enter the number of the SD card device to flash (or Ctrl+C to cancel):${NC}"
+    read -p "Device number: " SELECTION
+
+    if ! [[ "$SELECTION" =~ ^[0-9]+$ ]] || [ "$SELECTION" -lt 1 ] || [ "$SELECTION" -gt ${#AVAILABLE_DISKS[@]} ]; then
+        log_error "Invalid selection: $SELECTION"
+        exit 1
+    fi
+
+    SD_CARD_DEVICE="${AVAILABLE_DISKS[$((SELECTION-1))]}"
+    log_info ""
+    log_success "Selected device: $SD_CARD_DEVICE"
+    log_info ""
+fi
+
+# Flash directly to SD card
+if [ -n "$SD_CARD_DEVICE" ]; then
+    log_info ""
+    log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+    log_info "${BOLD}  PRE-FLASHING VERIFICATION${NC}"
+    log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+    log_info ""
+    log_step "Selected device: $SD_CARD_DEVICE"
     log_info ""
 
     # On macOS, check if device exists

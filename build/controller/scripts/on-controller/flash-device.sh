@@ -130,7 +130,7 @@ docker run --rm $DOCKER_TTY_FLAGS \
     file /workspace/tegrarcm_v2 2>/dev/null || echo 'tegrarcm_v2 not found'
     echo '---'
     # All packages should already be installed in the Docker image
-    # Just run the flash script
-    sudo ./doflash.sh
+    # Run the flash script with --spi-only to only flash bootloader
+    sudo ./doflash.sh --spi-only
 "
 
