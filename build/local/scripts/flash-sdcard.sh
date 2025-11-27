@@ -177,18 +177,24 @@ if [ -n "$SD_CARD_DEVICE" ]; then
     DOCKER_IMAGE_TAG="latest"
     DOCKER_DIR="$REPO_ROOT/build/docker"
 
-    # Check if image exists, build if not
-    if ! docker image inspect "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" >/dev/null 2>&1; then
-        log_info "Docker image not found. Building it..."
-        if [ ! -f "$DOCKER_DIR/Dockerfile" ]; then
-            log_error "Dockerfile not found at $DOCKER_DIR/Dockerfile"
-            exit 1
-        fi
-        cd "$DOCKER_DIR"
-        docker build -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" .
-        cd - >/dev/null
-        log_success "Docker image built"
+    # Always rebuild to capture Dockerfile changes
+    log_info "Building Docker image for linux/amd64 (required for tegraflash tools)..."
+    if [ ! -f "$DOCKER_DIR/Dockerfile" ]; then
+        log_error "Dockerfile not found at $DOCKER_DIR/Dockerfile"
+        exit 1
     fi
+    cd "$DOCKER_DIR"
+
+    # Build for amd64 platform (required for tegraflash tools)
+    if docker buildx version >/dev/null 2>&1; then
+        docker buildx create --use --name multiarch 2>/dev/null || docker buildx use multiarch 2>/dev/null || true
+        docker buildx build --platform linux/amd64 -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" --load .
+    else
+        log_info "buildx not available, using default build..."
+        docker build -t "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}" .
+    fi
+    cd - >/dev/null
+    log_success "Docker image built"
 
     # On macOS, we need to use the raw device and pass it to Docker
     # Docker on macOS can access block devices with --device flag
