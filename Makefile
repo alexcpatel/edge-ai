@@ -68,24 +68,25 @@ clean-package: ## Clean a specific package (usage: make clean-package PACKAGE=sw
 download-sdk: ## Download Yocto SDK from EC2 (requires instance running)
 	@$(REMOTE_DIR)/scripts/download-sdk.sh
 
-# Local Jetson flashing
-download-tegraflash: ## Download tegraflash archive from EC2 (required for flashing)
-	@$(REMOTE_DIR)/scripts/download-tegraflash.sh
-
-flash-sdcard: ## Flash SD card (interactive device selection, or specify DEVICE=/dev/diskX)
-	@$(LOCAL_DIR)/scripts/flash-sdcard.sh "$(DEVICE)"
-
-# Controller (Raspberry Pi) management
-controller-setup: ## Set up controller remotely (installs Docker, creates directories - one-time setup)
+# Controller management (raspberrypi and steamdeck)
+controller-setup: ## Set up controllers remotely (installs packages, creates directories - one-time setup)
 	@$(CONTROLLER_DIR)/scripts/setup-ssh-keys.sh
-	@$(CONTROLLER_DIR)/scripts/setup-controller-remote.sh
+	@$(CONTROLLER_DIR)/scripts/setup-controller.sh raspberrypi
+	@$(CONTROLLER_DIR)/scripts/setup-controller.sh steamdeck
 
-controller-update: ## Update everything: Docker image + scripts (use this after making changes)
+controller-update: ## Update controller scripts (use this after making changes)
 	@$(CONTROLLER_DIR)/scripts/update-controller.sh
 
 # Controller Jetson flashing
 controller-push-tegraflash: ## Push tegraflash archive from EC2 to controller
 	@$(CONTROLLER_DIR)/scripts/push-tegraflash.sh
 
-controller-flash-usb: ## Flash Jetson via USB from controller
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh
+controller-flash-usb: ## Flash Jetson via USB from controller (use FULL=--full for full image flash)
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh $(FULL)
+
+flash-sdcard: ## Flash SD card from controller (interactive device selection, or specify DEVICE=/dev/sdX)
+	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh "$(DEVICE)"
+
+# Local Jetson flashing
+download-tegraflash: ## Download tegraflash archive from EC2 to local (required for flashing)
+	@$(REMOTE_DIR)/scripts/download-tegraflash.sh

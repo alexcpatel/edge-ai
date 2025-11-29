@@ -1,13 +1,53 @@
 #!/bin/bash
-# Raspberry Pi Controller Configuration
+# Controller Configuration
 # This file sources local overrides from controller-config.local.sh if it exists
 # Create controller-config.local.sh with your personal settings (it's gitignored)
 
-# Default values (can be overridden in controller-config.local.sh)
-export CONTROLLER_HOSTNAME="${CONTROLLER_HOSTNAME:-your-controller-hostname.nord}"
-export CONTROLLER_USER="${CONTROLLER_USER:-controller}"
+# Controller definitions
+# raspberrypi: Used for remote access to debug serial connections
+# steamdeck: Used for flash-usb operations
+# Values are set in controller-config.local.sh
 
-# Controller paths
+# Default controller (for backward compatibility)
+export CONTROLLER_NAME="${CONTROLLER_NAME:-raspberrypi}"
+
+# Helper function to get controller hostname
+get_controller_hostname() {
+    local controller_name="${1:-$CONTROLLER_NAME}"
+    case "$controller_name" in
+        raspberrypi)
+            echo "${CONTROLLER_RASPBERRYPI_HOSTNAME}"
+            ;;
+        steamdeck)
+            echo "${CONTROLLER_STEAMDECK_HOSTNAME}"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+# Helper function to get controller user
+get_controller_user() {
+    local controller_name="${1:-$CONTROLLER_NAME}"
+    case "$controller_name" in
+        raspberrypi)
+            echo "${CONTROLLER_RASPBERRYPI_USER}"
+            ;;
+        steamdeck)
+            echo "${CONTROLLER_STEAMDECK_USER}"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+# Set current controller variables (for backward compatibility)
+export CONTROLLER_HOSTNAME="$(get_controller_hostname)"
+export CONTROLLER_USER="$(get_controller_user)"
+
+# Controller paths (based on current controller)
 export CONTROLLER_BASE_DIR="/home/${CONTROLLER_USER}/edge-ai-controller"
 export CONTROLLER_TEGRAFLASH_DIR="${CONTROLLER_BASE_DIR}/tegraflash"
 export CONTROLLER_IMAGES_DIR="${CONTROLLER_BASE_DIR}/images"
@@ -20,5 +60,8 @@ export DOCKER_IMAGE_TAG="${DOCKER_IMAGE_TAG:-latest}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/controller-config.local.sh" ]; then
     source "$SCRIPT_DIR/controller-config.local.sh"
+    # Re-export after local overrides
+    export CONTROLLER_HOSTNAME="$(get_controller_hostname)"
+    export CONTROLLER_USER="$(get_controller_user)"
 fi
 

@@ -2,10 +2,9 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Flash device script - runs on the controller
+# Flash SD card device script - runs on the controller
 # This script is deployed to the controller and executed remotely
 
-# This script runs on the controller (steamdeck for flash operations)
 # Source config from the controller's base directory
 CONTROLLER_BASE_DIR="${CONTROLLER_BASE_DIR:-/home/steamdeck/edge-ai-controller}"
 if [ -f "$CONTROLLER_BASE_DIR/config/controller-config.sh" ]; then
@@ -13,24 +12,18 @@ if [ -f "$CONTROLLER_BASE_DIR/config/controller-config.sh" ]; then
 fi
 
 ARCHIVE_PATH="$1"
-FLASH_MODE="${2:-spi-only}"
+SD_CARD_DEVICE="${2:-}"
 
 if [ -z "$ARCHIVE_PATH" ]; then
     echo "ERROR: Archive path not provided" >&2
     exit 1
 fi
 
-# Validate flash mode
-if [ "$FLASH_MODE" != "spi-only" ] && [ "$FLASH_MODE" != "full" ]; then
-    echo "ERROR: Invalid flash mode: $FLASH_MODE (must be 'spi-only' or 'full')" >&2
-    exit 1
-fi
-
 # Check if file exists
 if [ ! -f "$ARCHIVE_PATH" ]; then
     echo "ERROR: Archive file not found: $ARCHIVE_PATH" >&2
-    echo "Looking in: $CONTROLLER_TEGRAFLASH_DIR" >&2
-    ls -la "$CONTROLLER_TEGRAFLASH_DIR" >&2 || true
+    echo "Looking in: $CONTROLLER_BASE_DIR/tegraflash" >&2
+    ls -la "$CONTROLLER_BASE_DIR/tegraflash" >&2 || true
     exit 1
 fi
 
@@ -71,8 +64,8 @@ if [ "$NEEDS_EXTRACT" = true ]; then
 
     tar -xzf "$ARCHIVE_PATH"
 
-    if [ ! -f "./doflash.sh" ]; then
-        echo "ERROR: doflash.sh not found in tegraflash archive" >&2
+    if [ ! -f "./dosdcard.sh" ]; then
+        echo "ERROR: dosdcard.sh not found in tegraflash archive" >&2
         exit 1
     fi
 
@@ -84,42 +77,51 @@ else
     cd "$EXTRACT_DIR" || exit 1
 fi
 
-# Debug: Check architecture and USB devices
-echo "=== Architecture Debug Info ==="
-echo "Host architecture: $(uname -m)"
-echo "Tegraflash binary info:"
-file "$EXTRACT_DIR/tegrarcm_v2" 2>/dev/null || echo "tegrarcm_v2 not found"
-ls -la "$EXTRACT_DIR/tegrarcm_v2" 2>/dev/null || true
-echo "==============================="
-
-# Check for NVIDIA USB device before running
-echo "Checking for NVIDIA USB device..."
-if ! lsusb | grep -i nvidia >/dev/null 2>&1; then
-    echo "WARNING: No NVIDIA USB device detected. Make sure device is in recovery mode." >&2
-    echo "Run 'lsusb | grep -i nvidia' to verify device is connected." >&2
-else
-    echo "NVIDIA USB device detected:"
-    lsusb | grep -i nvidia
+# If SD card device not provided, list available devices
+if [ -z "$SD_CARD_DEVICE" ]; then
+    echo ""
+    echo "=== Available block devices ==="
+    lsblk -d -o NAME,SIZE,TYPE,MODEL | grep -E "^(NAME|sd|mmc|nvme)" || true
+    echo ""
+    echo "Please specify the SD card device (e.g., /dev/sdb, /dev/mmcblk0):"
+    read -p "Device: " SD_CARD_DEVICE
+    echo ""
 fi
 
-# Run flashing natively (Ubuntu/steamdeck can run tegraflash tools directly)
-echo "Running flash script natively..."
-cd "$EXTRACT_DIR" || exit 1
-
-# Build flash command based on mode
-if [ "$FLASH_MODE" = "full" ]; then
-    FLASH_CMD="./doflash.sh"
-    echo "Flash mode: FULL (bootloader + rootfs)"
-else
-    FLASH_CMD="./doflash.sh --spi-only"
-    echo "Flash mode: SPI-only (bootloader only)"
+# Verify device exists
+if [ ! -b "$SD_CARD_DEVICE" ]; then
+    echo "ERROR: Block device not found: $SD_CARD_DEVICE" >&2
+    echo "Available devices:" >&2
+    lsblk -d -o NAME,SIZE,TYPE,MODEL | grep -E "^(NAME|sd|mmc|nvme)" || true
+    exit 1
 fi
 
-# Check if we need sudo (typically required for USB device access)
+# Show device info for confirmation
+echo "Device information:"
+lsblk "$SD_CARD_DEVICE" || true
+echo ""
+echo "WARNING: This will erase all data on $SD_CARD_DEVICE"
+read -p "Press Enter to continue, or Ctrl+C to cancel..."
+
+# Unmount the device if mounted
+echo "Unmounting device..."
+sudo umount "${SD_CARD_DEVICE}"* 2>/dev/null || true
+
+# Run dosdcard.sh
+echo ""
+echo "=== Starting SD card flash ==="
+echo "Device: $SD_CARD_DEVICE"
+echo "This may take several minutes. Please be patient..."
+echo ""
+
+# Check if we need sudo (typically required for block device access)
 if [ "$EUID" -ne 0 ]; then
-    echo "Running with sudo (required for USB device access)..."
-    sudo "$FLASH_CMD"
+    echo "Running with sudo (required for block device access)..."
+    sudo ./dosdcard.sh "$SD_CARD_DEVICE"
 else
-    $FLASH_CMD
+    ./dosdcard.sh "$SD_CARD_DEVICE"
 fi
+
+echo ""
+echo "=== SD card flash complete ==="
 

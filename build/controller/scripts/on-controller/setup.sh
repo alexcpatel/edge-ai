@@ -2,9 +2,9 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Setup script for Raspberry Pi controller
-# This script should be run on the Raspberry Pi to set up the flashing environment
-# Usage: Run this script on the Raspberry Pi (not from your laptop)
+# Setup script for controllers
+# This script sets up the controller environment
+# Usage: Run this script on the controller (not from your laptop)
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -27,63 +27,104 @@ fi
 CONTROLLER_USER="${SUDO_USER:-$USER}"
 CONTROLLER_BASE_DIR="$HOME/edge-ai-controller"
 CONTROLLER_TEGRAFLASH_DIR="$CONTROLLER_BASE_DIR/tegraflash"
-DOCKER_IMAGE_NAME="edge-ai-flasher"
-DOCKER_IMAGE_TAG="latest"
 
-log_info ""
-log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-log_info "${BOLD}  Setting up Raspberry Pi Controller for Edge AI Flashing${NC}"
-log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-log_info ""
-
-# Check for Docker
-log_step "Checking for Docker..."
-if ! command -v docker &> /dev/null; then
-    log_info "Docker not found. Installing Docker..."
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
-    rm get-docker.sh
-    sudo usermod -aG docker "$CONTROLLER_USER"
-    log_success "Docker installed. You may need to log out and back in for group changes to take effect."
+# Detect controller type based on hostname
+HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
+if [[ "$HOSTNAME" == *"raspberrypi"* ]] || [[ "$HOSTNAME" == *"raspberry"* ]]; then
+    CONTROLLER_TYPE="raspberrypi"
+    CONTROLLER_PURPOSE="serial debug access"
+elif [[ "$HOSTNAME" == *"steamdeck"* ]] || [[ "$HOSTNAME" == *"deck"* ]]; then
+    CONTROLLER_TYPE="steamdeck"
+    CONTROLLER_PURPOSE="flash-usb operations"
 else
-    log_success "Docker is installed"
+    CONTROLLER_TYPE="unknown"
+    CONTROLLER_PURPOSE="controller operations"
 fi
 
-# Check for QEMU emulation support (needed for x86_64 containers on ARM)
-log_step "Checking for QEMU emulation support..."
-if [ "$(uname -m)" != "x86_64" ] && [ "$(uname -m)" != "amd64" ]; then
-    if ! docker run --rm --platform linux/amd64 ubuntu:22.04 uname -m >/dev/null 2>&1; then
-        log_info "QEMU emulation not available. Installing qemu-user-static..."
-        if command -v apt-get &> /dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq qemu-user-static binfmt-support
-            log_success "QEMU emulation installed"
-        else
-            log_error "Cannot install QEMU automatically. Please install qemu-user-static manually."
-            log_info "On Debian/Ubuntu: sudo apt-get install qemu-user-static binfmt-support"
-        fi
-    else
-        log_success "QEMU emulation is working"
+log_info ""
+log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+log_info "${BOLD}  Setting up $CONTROLLER_TYPE Controller${NC}"
+log_info "${BOLD}  Purpose: $CONTROLLER_PURPOSE${NC}"
+log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+log_info ""
+
+# Function to check and install required packages for flashing (steamdeck only)
+check_flash_packages() {
+    if [ "$CONTROLLER_TYPE" != "steamdeck" ]; then
+        return 0
     fi
-fi
 
-# Check if user is in docker group
-if ! groups | grep -q docker; then
-    log_info "Adding user to docker group..."
-    sudo usermod -aG docker "$CONTROLLER_USER"
-    log_info "User added to docker group. You may need to log out and back in."
-fi
+    log_step "Checking required packages for flashing..."
+
+    # Required packages based on Dockerfile
+    REQUIRED_PACKAGES=(
+        device-tree-compiler
+        python3
+        python3-yaml
+        sudo
+        udev
+        usbutils
+        rsync
+        file
+        libc6-i386
+        libstdc++6:i386
+        gawk
+        wget
+        git-core
+        diffstat
+        unzip
+        texinfo
+        gcc-multilib
+        build-essential
+        chrpath
+        socat
+        libsdl1.2-dev
+        xterm
+        zstd
+        gdisk
+    )
+
+    MISSING_PACKAGES=()
+    for pkg in "${REQUIRED_PACKAGES[@]}"; do
+        # Handle multiarch packages (i386)
+        if [[ "$pkg" == *":i386" ]]; then
+            pkg_name="${pkg%:*}"
+            if ! dpkg -l | grep -q "^ii.*$pkg_name.*i386" 2>/dev/null; then
+                MISSING_PACKAGES+=("$pkg")
+            fi
+        else
+            if ! dpkg -l | grep -q "^ii.*$pkg " 2>/dev/null; then
+                MISSING_PACKAGES+=("$pkg")
+            fi
+        fi
+    done
+
+    if [ ${#MISSING_PACKAGES[@]} -eq 0 ]; then
+        log_success "All required packages are installed"
+    else
+        log_info "Installing missing packages..."
+        if command -v apt-get &> /dev/null; then
+            # Enable multiarch support for i386 packages
+            if ! dpkg --print-architecture | grep -q i386 2>/dev/null; then
+                sudo dpkg --add-architecture i386
+            fi
+            sudo apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${MISSING_PACKAGES[@]}"
+            log_success "Required packages installed"
+        else
+            log_error "Cannot install packages automatically. Please install: ${MISSING_PACKAGES[*]}"
+            return 1
+        fi
+    fi
+}
 
 # Create directories
 log_step "Creating directories..."
 mkdir -p "$CONTROLLER_TEGRAFLASH_DIR"
 log_success "Directories created"
 
-# Note: Docker image should be deployed from your laptop
-log_step "Docker image setup..."
-log_info "Docker image will be deployed from your laptop using:"
-log_info "  make controller-update"
-log_info "This ensures the image is built with the latest code from your repository."
+# Check and install flash packages for steamdeck
+check_flash_packages
 
 # Check NordVPN Meshnet
 log_step "Checking NordVPN Meshnet..."
@@ -105,11 +146,15 @@ log_success "${BOLD}════════════════════
 log_success "${BOLD}  Setup Complete!${NC}"
 log_success "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
 log_info ""
-log_info "Next steps (on your laptop):"
-log_info "  1. Make sure NordVPN Meshnet is enabled on both devices"
-log_info "  2. Find your Meshnet hostname/IP: nordvpn meshnet peer list"
-log_info "  3. Update CONTROLLER_HOSTNAME in build/controller/config/controller-config.sh"
-log_info "  4. Test connection from your laptop: ping <meshnet-hostname-or-ip>"
-log_info "  5. Deploy controller software: make controller-update"
+if [ "$CONTROLLER_TYPE" = "steamdeck" ]; then
+    log_info "Next steps (on your laptop):"
+    log_info "  1. Make sure NordVPN Meshnet is enabled on both devices"
+    log_info "  2. Deploy controller software: make controller-update steamdeck"
+    log_info "  3. Push tegraflash archive: make controller-push-tegraflash"
+else
+    log_info "Next steps (on your laptop):"
+    log_info "  1. Make sure NordVPN Meshnet is enabled on both devices"
+    log_info "  2. Controller is ready for serial debug access"
+fi
 log_info ""
 
