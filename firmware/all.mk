@@ -80,6 +80,7 @@ firmware-controller-push-tegraflash: ## Push tegraflash archive from EC2 to cont
 
 firmware-controller-flash-usb: firmware-controller-deploy ## Flash Jetson via USB from controller (use FULL=--full for full image flash)
 	@$(CONTROLLER_DIR)/scripts/flash-usb.sh start $(FULL)
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh watch
 
 firmware-controller-flash-usb-status: ## Check if USB flash session is running
 	@$(CONTROLLER_DIR)/scripts/flash-usb.sh status
