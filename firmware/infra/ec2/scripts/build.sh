@@ -2,353 +2,127 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Yocto build management
-# Usage: build.sh [start|status|watch|terminate]
-#   start:     Upload source and start build in tmux session (default)
-#   status:    Check if build session is running
-#   watch:     Tail the build log file (allows scrolling in local terminal)
-#   terminate: Terminate running build session
-
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 is_build_running() {
-    local ip="$1"
-    ssh_cmd "$ip" "tmux has-session -t yocto-build 2>/dev/null" >/dev/null 2>&1
+    ssh_cmd "$1" "tmux has-session -t yocto-build 2>/dev/null" >/dev/null 2>&1
 }
 
 upload_source() {
     local ip="$1"
     log_info "Uploading source files to EC2..."
     ssh_cmd "$ip" "mkdir -p $REMOTE_SOURCE_DIR $YOCTO_DIR/config"
-
-    # Only upload what's needed for Yocto builds
     rsync_cmd "$ip" -avz --progress \
-        --include='layers/' \
-        --include='layers/**' \
-        --include='sources/' \
-        --include='sources/**' \
-        --include='firmware/' \
-        --include='firmware/yocto/' \
-        --include='firmware/yocto/**' \
-        --include='firmware/infra/' \
-        --include='firmware/infra/ec2/' \
-        --include='firmware/infra/ec2/scripts/' \
-        --include='firmware/infra/ec2/scripts/on-ec2/' \
+        --include='layers/' --include='layers/**' \
+        --include='sources/' --include='sources/**' \
+        --include='firmware/' --include='firmware/yocto/' --include='firmware/yocto/**' \
+        --include='firmware/infra/' --include='firmware/infra/ec2/' \
+        --include='firmware/infra/ec2/scripts/' --include='firmware/infra/ec2/scripts/on-ec2/' \
         --include='firmware/infra/ec2/scripts/on-ec2/**' \
-        --exclude='*' \
-        --exclude='.git' \
-        "$REPO_ROOT/" \
-        "${EC2_USER}@${ip}:${REMOTE_SOURCE_DIR}/"
-
+        --exclude='*' --exclude='.git' \
+        "$REPO_ROOT/" "${EC2_USER}@${ip}:${REMOTE_SOURCE_DIR}/"
     log_success "Upload completed"
 }
 
 start_build() {
-    ip=$(get_instance_ip_or_exit)
+    local ip=$(get_instance_ip_or_exit)
 
-    # Check if build is already running - fail early if so
-    if is_build_running "$ip"; then
-        log_error "Build session is already running. Terminate it first with 'make build-terminate'"
-        exit 1
-    fi
+    is_build_running "$ip" && { log_error "Build already running. Use 'make build-terminate' first"; exit 1; }
 
-    # Upload source files first
     upload_source "$ip"
+    log_info "Starting Yocto build..."
 
-    log_info "Starting Yocto build in tmux session 'yocto-build'..."
-
-    # Configure tmux to disable mouse mode (prevents escape sequences from trackpad scrolling)
     ssh_cmd "$ip" "tmux set -g mouse off 2>/dev/null || true" || true
 
-    # Start build in tmux session using KAS - session will exit when build completes (success or failure)
-    # KAS manages its own work directory structure - run from YOCTO_DIR so it creates work dir there
-    KAS_CONFIG="${REMOTE_SOURCE_DIR}/firmware/yocto/config/kas.yml"
-    BUILD_SCRIPT="${REMOTE_SOURCE_DIR}/firmware/yocto/scripts/run-build.sh"
+    local kas_config="${REMOTE_SOURCE_DIR}/firmware/yocto/config/kas.yml"
+    local build_script="${REMOTE_SOURCE_DIR}/firmware/yocto/scripts/run-build.sh"
+    local monitor_script="${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/monitor-build-stop.sh"
 
-    # Make sure build script is executable
-    ssh_cmd "$ip" "chmod +x $BUILD_SCRIPT 2>/dev/null || true" || true
+    ssh_cmd "$ip" "chmod +x $build_script $monitor_script 2>/dev/null || true" || true
+    ssh_cmd "$ip" "tmux new-session -d -s yocto-build bash $build_script '$kas_config' '$YOCTO_DIR'" || {
+        log_error "Failed to start build"; exit 1
+    }
 
-    # Start build in tmux session
-    if ! ssh_cmd "$ip" \
-        "tmux new-session -d -s yocto-build bash $BUILD_SCRIPT '$KAS_CONFIG' '$YOCTO_DIR'"; then
-        log_error "Failed to start build session via SSH"
-        exit 1
-    fi
+    for _ in {1..3}; do is_build_running "$ip" && break; sleep 0.5; done
+    is_build_running "$ip" || { log_error "Build failed to start"; ssh_cmd "$ip" "tail -50 /tmp/yocto-build.log" || true; exit 1; }
 
-    # Verify the session is running (retry up to 3 times with short delays)
-    local retries=3
-    local retry_delay=0.5
-    while [ $retries -gt 0 ]; do
-        if is_build_running "$ip"; then
-            break
-        fi
-        retries=$((retries - 1))
-        if [ $retries -gt 0 ]; then
-            sleep $retry_delay
-        fi
-    done
-
-    if ! is_build_running "$ip"; then
-        log_error "Build session failed to start. Check logs:"
-        ssh_cmd "$ip" "tail -50 /tmp/yocto-build.log 2>/dev/null || echo 'No log file found'" || true
-        exit 1
-    fi
-
-    # Start monitor script in background (if not already running)
-    MONITOR_SCRIPT="${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/monitor-build-stop.sh"
-    ssh_cmd "$ip" "chmod +x $MONITOR_SCRIPT 2>/dev/null || true" || true
     ssh_cmd "$ip" "pkill -f 'monitor-build-stop.sh' 2>/dev/null || true" || true
-    # Start monitor as a proper daemon using setsid to detach from SSH session
-    # setsid creates a new session, preventing SSH from killing it on disconnect
-    ssh_cmd "$ip" "setsid bash $MONITOR_SCRIPT > /tmp/build-monitor.log 2>&1 < /dev/null &" || true
+    ssh_cmd "$ip" "setsid bash $monitor_script > /tmp/build-monitor.log 2>&1 < /dev/null &" || true
 
-    log_success "Build started in tmux session 'yocto-build'"
+    log_success "Build started"
     log_info "Use 'make build-watch' to view progress"
 }
 
 check_status() {
-    local instance_id state ip
-    instance_id=$(get_instance_id)
+    local id=$(get_instance_id)
+    [ -z "$id" ] || [ "$id" == "None" ] && { echo "EC2 not found"; exit 1; }
 
-    if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
-        echo "EC2 not found"
-        exit 1
-    fi
+    local state=$(get_instance_state "$id")
+    [ "$state" != "running" ] && { echo "EC2 is $state (not running)"; exit 1; }
 
-    state=$(get_instance_state "$instance_id")
-    if [ "$state" != "running" ]; then
-        echo "EC2 is $state (not running)"
-        echo "No build session can be running when EC2 is stopped"
-        exit 1
-    fi
+    local ip=$(get_instance_ip "$id")
+    [ -z "$ip" ] || [ "$ip" == "None" ] && { echo "Could not get IP"; exit 1; }
 
-    ip=$(get_instance_ip "$instance_id")
-    if [ -z "$ip" ] || [ "$ip" == "None" ]; then
-        echo "Could not get instance IP"
-        exit 1
-    fi
-
-    # Batch all status checks into a single SSH call to reduce overhead
-    # Use heredoc for readability - local vars (YOCTO_IMAGE, YOCTO_DIR) expand here, remote vars ($elapsed, etc.) expand on remote
-    local status_output
-    status_output=$(ssh_cmd "$ip" <<REMOTE_SCRIPT
-        # Check if build session is running
-        if tmux has-session -t yocto-build 2>/dev/null; then
-            echo 'BUILD_RUNNING=1'
-
-            # Get elapsed time of the actual build process (kas or bitbake)
-            elapsed=\$(pgrep -f 'bitbake.*${YOCTO_IMAGE}\|kas.*build' | head -1 | xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' ' || echo '')
-            if [ -n "\$elapsed" ]; then
-                echo "ELAPSED=\$elapsed"
-            else
-                # Fallback: get elapsed time from tmux session process itself
-                elapsed=\$(tmux list-sessions -F '#{session_name} #{pane_pid}' | grep '^yocto-build ' | awk '{print \$2}' | xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' ' || echo '')
-                if [ -n "\$elapsed" ]; then
-                    echo "ELAPSED=\$elapsed"
-                fi
-            fi
-
-            # Extract task progress from build log (only check last 20 lines for efficiency)
-            if [ -f /tmp/yocto-build.log ]; then
-                task_progress=\$(tail -20 /tmp/yocto-build.log 2>/dev/null | grep -oE 'Running task [0-9]+ of [0-9]+' | tail -1 || echo '')
-                if [ -n "\$task_progress" ]; then
-                    echo "TASK_PROGRESS=\$task_progress"
-                fi
-            fi
-        else
-            echo 'BUILD_RUNNING=0'
-            # Check for last successful build timestamp
-            if [ -f ${YOCTO_DIR}/.last-successful-build ]; then
-                echo "LAST_SUCCESS=\$(cat ${YOCTO_DIR}/.last-successful-build 2>/dev/null || echo '')"
-            fi
-        fi
-REMOTE_SCRIPT
-    )
-
-    # Parse the output
-    local build_running elapsed task_progress last_success
-    build_running=$(echo "$status_output" | grep -E '^BUILD_RUNNING=' | cut -d'=' -f2 || echo "0")
-    elapsed=$(echo "$status_output" | grep -E '^ELAPSED=' | cut -d'=' -f2- || echo "")
-    task_progress=$(echo "$status_output" | grep -E '^TASK_PROGRESS=' | cut -d'=' -f2- || echo "")
-    last_success=$(echo "$status_output" | grep -E '^LAST_SUCCESS=' | cut -d'=' -f2- || echo "")
-
-    if [ "$build_running" = "1" ]; then
+    if ssh_cmd "$ip" "tmux has-session -t yocto-build 2>/dev/null"; then
         echo "Build session is running"
 
-        if [ -n "$elapsed" ]; then
-            echo "Elapsed time: $elapsed"
-        else
-            echo "Build session active (bitbake process not found yet)"
-        fi
+        # Get elapsed time from bitbake/kas process
+        local elapsed=$(ssh_cmd "$ip" "pgrep -f 'bitbake\|kas.*build' | head -1 | \
+            xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' '" 2>/dev/null || echo "")
+        [ -n "$elapsed" ] && echo "Elapsed: $elapsed" || echo "Build starting..."
 
-        if [ -n "$task_progress" ]; then
-            # Extract current and total tasks
-            local current_task total_tasks
-            current_task=$(echo "$task_progress" | grep -oE 'Running task [0-9]+' | grep -oE '[0-9]+' || echo "")
-            total_tasks=$(echo "$task_progress" | grep -oE 'of [0-9]+' | grep -oE '[0-9]+' || echo "")
-
-            if [ -n "$current_task" ] && [ -n "$total_tasks" ]; then
-                echo "Task progress: $current_task/$total_tasks"
-            fi
-        fi
-
-        exit 0
+        # Get task progress from log
+        local task=$(ssh_cmd "$ip" "tail -20 /tmp/yocto-build.log 2>/dev/null | \
+            grep -oE 'Running task [0-9]+ of [0-9]+' | tail -1" 2>/dev/null || echo "")
+        [ -n "$task" ] && echo "Progress: $task"
     else
         echo "No build session found"
-
-        # Check for last successful build timestamp
-        if [ -n "$last_success" ]; then
-            local timestamp
-            timestamp=$(echo "$last_success" | tr -d '\n' || echo "")
-            if [ -n "$timestamp" ] && [ "$timestamp" -gt 0 ] 2>/dev/null; then
-                # Convert Unix timestamp to readable date
-                local readable_date
-                readable_date=$(date -d "@$timestamp" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$timestamp" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "")
-                if [ -n "$readable_date" ]; then
-                    echo "Last successful build: $readable_date"
-                fi
-            fi
-        fi
-
-        # Check if there's evidence of an interrupted build
-        if ssh_cmd "$ip" "test -f $YOCTO_DIR/build/bitbake.lock 2>/dev/null || test -f $YOCTO_DIR/build*/bitbake.lock 2>/dev/null" 2>/dev/null; then
-            echo ""
-            echo "⚠ Warning: BitBake lock file exists but no build session is running"
-            echo "  Previous build may have been interrupted"
-            echo "  Run 'make clean' to clean up and start fresh"
-        fi
-
-        # Check for build errors in log file
-        local has_errors=0
-        if ssh_cmd "$ip" "test -f /tmp/yocto-build.log" 2>/dev/null; then
-            echo ""
-            echo "=== Recent Build Errors ==="
-            local errors
-            errors=$(ssh_cmd "$ip" \
-                "tail -100 /tmp/yocto-build.log | grep -iE 'error|failed|fatal|exception' | tail -10" 2>/dev/null || echo "")
-
-            if [ -n "$errors" ]; then
-                echo "$errors" | sed 's/^/  /'
-                has_errors=1
-            else
-                # Check last few lines for any indication of failure
-                local last_lines
-                last_lines=$(ssh_cmd "$ip" "tail -5 /tmp/yocto-build.log" 2>/dev/null || echo "")
-                if echo "$last_lines" | grep -qiE "failed|error|aborted"; then
-                    echo "$last_lines" | sed 's/^/  /'
-                    has_errors=1
-                else
-                    echo "  (No obvious errors found in recent log output)"
-                fi
-            fi
-        fi
-
-        # Only exit with error if actual errors were found
-        if [ "$has_errors" -eq 1 ]; then
-            exit 1
-        else
-            exit 0
-        fi
+        ssh_cmd "$ip" "test -f $YOCTO_DIR/build/bitbake.lock" 2>/dev/null && \
+            echo -e "\n⚠ BitBake lock exists - run 'make clean' to fix"
     fi
 }
 
 watch_build() {
-    ip=$(get_instance_ip_or_exit)
-
-    if ! is_build_running "$ip"; then
-        log_error "No build session found. Start a build first with 'make build'"
-        exit 1
-    fi
-
-    log_info "Watching build log (will stop when build completes or errors)"
-
-    # Execute watch script from synced location
-    # If SSH fails or is interrupted, that's okay - build is still running
+    local ip=$(get_instance_ip_or_exit)
+    is_build_running "$ip" || { log_error "No build session. Start with 'make build'"; exit 1; }
+    log_info "Watching build log..."
     ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/firmware/yocto/scripts/watch-build.sh" || {
-        log_info "Watch session ended (build continues in background)"
-        exit 0
+        log_info "Watch ended (build continues in background)"; exit 0
     }
 }
 
 terminate_build() {
-    ip=$(get_instance_ip_or_exit)
-
-    if ! is_build_running "$ip"; then
-        log_error "No build session found. Nothing to terminate."
-        exit 1
-    fi
-
-    log_info "Terminating build session..."
+    local ip=$(get_instance_ip_or_exit)
+    is_build_running "$ip" || { log_error "No build session to terminate"; exit 1; }
+    log_info "Terminating build..."
     ssh_cmd "$ip" "tmux kill-session -t yocto-build 2>/dev/null || true" || true
-
-    # Clean up bitbake processes and lock files after terminating
-    log_info "Cleaning up BitBake processes and lock files..."
-    ssh_cmd "$ip" "pkill -f 'bitbake.*server' 2>/dev/null || true" || true
-    ssh_cmd "$ip" "pkill -f 'bitbake.*-m' 2>/dev/null || true" || true
-    ssh_cmd "$ip" "find $YOCTO_DIR -name 'bitbake.lock' -type f -delete 2>/dev/null || true" || true
-    ssh_cmd "$ip" "find $YOCTO_DIR -name 'bitbake.sock' -type f -delete 2>/dev/null || true" || true
-
-    log_success "Build session terminated and cleaned up"
+    ssh_cmd "$ip" "pkill -f 'bitbake' 2>/dev/null; find $YOCTO_DIR -name 'bitbake.lock' -delete 2>/dev/null" || true
+    log_success "Build terminated"
 }
 
+FLAG_FILE="/tmp/auto-stop-ec2"
+
 set_auto_stop() {
-    ip=$(get_instance_ip_or_exit)
-    FLAG_FILE="/tmp/auto-stop-ec2"
-    ssh_cmd "$ip" "touch $FLAG_FILE"
-    log_success "Auto-stop enabled (EC2 will stop when build ends)"
+    ssh_cmd "$(get_instance_ip_or_exit)" "touch $FLAG_FILE"
+    log_success "Auto-stop enabled"
 }
 
 unset_auto_stop() {
-    ip=$(get_instance_ip_or_exit)
-    FLAG_FILE="/tmp/auto-stop-ec2"
-    ssh_cmd "$ip" "rm -f $FLAG_FILE"
+    ssh_cmd "$(get_instance_ip_or_exit)" "rm -f $FLAG_FILE"
     log_success "Auto-stop disabled"
 }
 
 check_auto_stop() {
-    ip=$(get_instance_ip_or_exit)
-    FLAG_FILE="/tmp/auto-stop-ec2"
-    if ssh_cmd "$ip" "test -f $FLAG_FILE" 2>/dev/null; then
-        echo "enabled"
-    else
-        echo "disabled"
-    fi
+    ssh_cmd "$(get_instance_ip_or_exit)" "test -f $FLAG_FILE" 2>/dev/null && echo "enabled" || echo "disabled"
 }
 
-ACTION="${1:-start}"
-
-case "$ACTION" in
-    start)
-        start_build
-        ;;
-    status)
-        check_status
-        ;;
-    watch)
-        watch_build
-        ;;
-    terminate)
-        terminate_build
-        ;;
-    set-auto-stop)
-        set_auto_stop
-        ;;
-    unset-auto-stop)
-        unset_auto_stop
-        ;;
-    check-auto-stop)
-        check_auto_stop
-        ;;
-    *)
-        echo "Usage: $0 [start|status|watch|terminate|set-auto-stop|unset-auto-stop|check-auto-stop]"
-        echo "  start          - Start build in tmux session (default)"
-        echo "  status         - Check if build session is running"
-        echo "  watch          - Tail the build log file (allows scrolling in local terminal)"
-        echo "  terminate      - Terminate running build session"
-        echo "  set-auto-stop  - Enable auto-stop (EC2 stops when build ends)"
-        echo "  unset-auto-stop - Disable auto-stop"
-        echo "  check-auto-stop - Check if auto-stop is enabled"
-        exit 1
-        ;;
+case "${1:-start}" in
+    start) start_build ;;
+    status) check_status ;;
+    watch) watch_build ;;
+    terminate) terminate_build ;;
+    set-auto-stop) set_auto_stop ;;
+    unset-auto-stop) unset_auto_stop ;;
+    check-auto-stop) check_auto_stop ;;
+    *) echo "Usage: $0 [start|status|watch|terminate|set-auto-stop|unset-auto-stop|check-auto-stop]"; exit 1 ;;
 esac
-
