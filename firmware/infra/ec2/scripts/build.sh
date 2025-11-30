@@ -35,7 +35,7 @@ start_build() {
     ssh_cmd "$ip" "tmux set -g mouse off 2>/dev/null || true" || true
 
     local kas_config="${REMOTE_SOURCE_DIR}/firmware/yocto/config/kas.yml"
-    local build_script="${REMOTE_SOURCE_DIR}/firmware/yocto/scripts/run-build.sh"
+    local build_script="${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/run-build.sh"
     local monitor_script="${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/monitor-build-stop.sh"
 
     ssh_cmd "$ip" "chmod +x $build_script $monitor_script 2>/dev/null || true" || true
@@ -86,7 +86,7 @@ watch_build() {
     local ip=$(get_instance_ip_or_exit)
     is_build_running "$ip" || { log_error "No build session. Start with 'make build'"; exit 1; }
     log_info "Watching build log..."
-    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/firmware/yocto/scripts/watch-build.sh" || {
+    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/watch-build.sh" || {
         log_info "Watch ended (build continues in background)"; exit 0
     }
 }

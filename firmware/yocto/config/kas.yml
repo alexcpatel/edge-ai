@@ -5,7 +5,7 @@
 header:
   version: 15
 
-machine: jetson-orin-nano-devkit
+machine: jetson-orin-nano-devkit-nvme
 distro: poky
 target: core-image-sato-dev
 
