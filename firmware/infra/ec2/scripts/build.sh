@@ -67,7 +67,7 @@ check_status() {
         echo "Build session is running"
 
         # Get elapsed time from bitbake/kas process
-        local elapsed=$(ssh_cmd "$ip" "pgrep -f 'bitbake\|kas.*build' | head -1 | \
+        local elapsed=$(ssh_cmd "$ip" "pgrep -f 'kas' | head -1 | \
             xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' '" 2>/dev/null || echo "")
         [ -n "$elapsed" ] && echo "Elapsed: $elapsed" || echo "Build starting..."
 

@@ -762,7 +762,7 @@ class YoctoBuilderPanel {
         };
 
         // Extract elapsed time if available (whether running or not)
-        const elapsedMatch = stdout.match(/Elapsed time: (.+)/);
+        const elapsedMatch = stdout.match(/Elapsed: (.+)/);
         if (elapsedMatch) {
             status.elapsed = elapsedMatch[1];
             // Parse elapsed time to seconds for client-side incrementing
@@ -770,7 +770,7 @@ class YoctoBuilderPanel {
         }
 
         // Extract task progress if available
-        const taskProgressMatch = stdout.match(/Task progress: (\d+)\/(\d+)/);
+        const taskProgressMatch = stdout.match(/Progress: Running task (\d+) of (\d+)/);
         if (taskProgressMatch) {
             const current = parseInt(taskProgressMatch[1], 10);
             const total = parseInt(taskProgressMatch[2], 10);
