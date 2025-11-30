@@ -77,7 +77,6 @@ main() {
         if grep -q "Tasks Summary:.*all succeeded" "$LOG_FILE" 2>/dev/null; then
             log_info "Build succeeded! Recording timestamp..."
             date +%s > "$SUCCESS_FILE" 2>/dev/null || true
-            # Note: Post-build is now handled in the build session itself
         fi
     fi
 

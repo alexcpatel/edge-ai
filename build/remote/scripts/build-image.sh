@@ -32,7 +32,6 @@ start_build() {
 
     # Start build in tmux session using KAS - session will exit when build completes (success or failure)
     # KAS manages its own work directory structure - run from YOCTO_DIR so it creates work dir there
-    # Post-build steps are included in the same session so watch can see them
     KAS_CONFIG="${REMOTE_SOURCE_DIR}/build/yocto/config/kas.yml"
     BUILD_SCRIPT="${REMOTE_SOURCE_DIR}/build/yocto/scripts/run-build-with-post.sh"
 
