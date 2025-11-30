@@ -352,8 +352,23 @@
                 <span class="info-label">Status:</span>
                 <span>{{CONTROLLER_STATUS_TEXT}}</span>
             </div>
-            <div class="button-group" style="margin-top: 8px;">
-                <button onclick="flashStart()">Flash Bootloader (USB)</button>
+            <div class="status" style="margin-top: 12px;">
+                <div class="status-indicator {{FLASH_USB_STATUS_CLASS}}"></div>
+                <span><strong>USB Flash:</strong> {{FLASH_USB_STATUS_TEXT}}</span>
+            </div>
+            {{FLASH_USB_ELAPSED_TIME}}
+            {{FLASH_USB_LAST_LOG}}
+            {{FLASH_USB_ERRORS}}
+            <div class="button-group">
+                <button onclick="flashStart()" {{FLASH_USB_START_DISABLED}}>Start USB Flash</button>
+                <button onclick="flashUsbWatch()" {{FLASH_USB_WATCH_DISABLED}}>Watch</button>
+                <button onclick="flashUsbTerminate()" {{FLASH_USB_TERMINATE_DISABLED}}>Terminate</button>
+            </div>
+            <div class="stop-on-complete" style="margin-top: 8px;">
+                <label>
+                    <input type="checkbox" id="flashUsbFull" onchange="updateFlashUsbFull(this.checked)">
+                    Full flash (bootloader + rootfs)
+                </label>
             </div>
             <div class="status" style="margin-top: 12px;">
                 <div class="status-indicator {{FLASH_SDCARD_STATUS_CLASS}}"></div>
@@ -379,6 +394,9 @@
         let flashSdcardElapsedTimeInterval = null;
         let lastFlashSdcardElapsedSeconds = 0;
         let lastFlashSdcardUpdateTime = Date.now();
+        let flashUsbElapsedTimeInterval = null;
+        let lastFlashUsbElapsedSeconds = 0;
+        let lastFlashUsbUpdateTime = Date.now();
 
         // Format seconds into readable time string
         function formatElapsedTime(seconds) {
@@ -496,6 +514,54 @@
             }
         }
 
+        // Update flash USB elapsed time display
+        function updateFlashUsbElapsedTime() {
+            const elapsedElement = document.getElementById('flashUsbElapsedTime');
+            if (!elapsedElement) {
+                return;
+            }
+
+            const isRunning = elapsedElement.getAttribute('data-is-running') === 'true';
+            if (!isRunning) {
+                if (flashUsbElapsedTimeInterval) {
+                    clearInterval(flashUsbElapsedTimeInterval);
+                    flashUsbElapsedTimeInterval = null;
+                }
+                return;
+            }
+
+            const now = Date.now();
+            const timeDiff = Math.floor((now - lastFlashUsbUpdateTime) / 1000);
+            const currentElapsedSeconds = lastFlashUsbElapsedSeconds + timeDiff;
+
+            elapsedElement.textContent = formatElapsedTime(currentElapsedSeconds);
+        }
+
+        // Start/update flash USB elapsed time tracking
+        function startFlashUsbElapsedTimeTracking() {
+            const elapsedElement = document.getElementById('flashUsbElapsedTime');
+            if (!elapsedElement) {
+                return;
+            }
+
+            const elapsedSecondsAttr = elapsedElement.getAttribute('data-elapsed-seconds');
+            const isRunning = elapsedElement.getAttribute('data-is-running') === 'true';
+
+            if (elapsedSecondsAttr !== null) {
+                lastFlashUsbElapsedSeconds = parseInt(elapsedSecondsAttr, 10) || 0;
+                lastFlashUsbUpdateTime = Date.now();
+            }
+
+            if (flashUsbElapsedTimeInterval) {
+                clearInterval(flashUsbElapsedTimeInterval);
+            }
+
+            if (isRunning) {
+                updateFlashUsbElapsedTime();
+                flashUsbElapsedTimeInterval = setInterval(updateFlashUsbElapsedTime, 1000);
+            }
+        }
+
         // Show refresh animation briefly when page updates (auto-refresh)
         function showRefreshAnimation() {
             if (refreshIndicator) {
@@ -533,6 +599,7 @@
             showRefreshAnimation();
             startElapsedTimeTracking();
             startFlashSdcardElapsedTimeTracking();
+            startFlashUsbElapsedTimeTracking();
             initProgressBar();
         }, 50);
 
@@ -573,7 +640,21 @@
         }
 
         function flashStart() {
-            vscode.postMessage({ command: 'flashStart' });
+            const fullCheckbox = document.getElementById('flashUsbFull');
+            const full = fullCheckbox ? fullCheckbox.checked : false;
+            vscode.postMessage({ command: 'flashStart', full: full });
+        }
+
+        function updateFlashUsbFull(checked) {
+            // Just store the state, will be used when flashStart is called
+        }
+
+        function flashUsbWatch() {
+            vscode.postMessage({ command: 'flashUsbWatch' });
+        }
+
+        function flashUsbTerminate() {
+            vscode.postMessage({ command: 'flashUsbTerminate' });
         }
 
         function flashSdcardStart() {

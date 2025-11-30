@@ -143,6 +143,14 @@ export function activate(context: vscode.ExtensionContext) {
                 outputChannel.appendLine('Command: flashStart');
                 runCommand('make firmware-controller-flash-usb C=steamdeck', 'Yocto Builder - Flash USB Start');
             }),
+            vscode.commands.registerCommand('yocto-builder.flashUsbWatch', () => {
+                outputChannel.appendLine('Command: flashUsbWatch');
+                runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash USB Watch');
+            }),
+            vscode.commands.registerCommand('yocto-builder.flashUsbTerminate', () => {
+                outputChannel.appendLine('Command: flashUsbTerminate');
+                runCommand('make firmware-controller-flash-usb-terminate C=steamdeck', 'Yocto Builder - Flash USB Terminate');
+            }),
             vscode.commands.registerCommand('yocto-builder.flashSdcardStart', () => {
                 outputChannel.appendLine('Command: flashSdcardStart');
                 runCommand('make firmware-controller-flash-sdcard C=steamdeck', 'Yocto Builder - Flash SD Card Start');
@@ -369,7 +377,17 @@ class YoctoBuilderPanel {
                         runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
                         break;
                     case 'flashStart':
-                        runCommand('make firmware-controller-flash-usb C=steamdeck', 'Yocto Builder - Flash USB Start');
+                        const fullMode = message.full || false;
+                        const flashCommand = fullMode
+                            ? 'make firmware-controller-flash-usb C=steamdeck FULL=--full'
+                            : 'make firmware-controller-flash-usb C=steamdeck';
+                        runCommand(flashCommand, 'Yocto Builder - Flash USB Start');
+                        break;
+                    case 'flashUsbWatch':
+                        runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash USB Watch');
+                        break;
+                    case 'flashUsbTerminate':
+                        runCommand('make firmware-controller-flash-usb-terminate C=steamdeck', 'Yocto Builder - Flash USB Terminate');
                         break;
                     case 'flashSdcardStart':
                         runCommand('make firmware-controller-flash-sdcard C=steamdeck', 'Yocto Builder - Flash SD Card Start');
@@ -493,11 +511,12 @@ class YoctoBuilderPanel {
         }
 
         // Run status checks in parallel to reduce delay
-        const [instanceStatus, buildStatus, controllerStatus, flashSdcardStatus] = await Promise.all([
+        const [instanceStatus, buildStatus, controllerStatus, flashSdcardStatus, flashUsbStatus] = await Promise.all([
             this.getInstanceStatus(workspaceFolder.uri.fsPath),
             this.getBuildStatus(workspaceFolder.uri.fsPath),
             this.getControllerStatus(workspaceFolder.uri.fsPath),
-            this.getFlashSdcardStatus(workspaceFolder.uri.fsPath)
+            this.getFlashSdcardStatus(workspaceFolder.uri.fsPath),
+            this.getFlashUsbStatus(workspaceFolder.uri.fsPath)
         ]);
 
         // Read HTML template
@@ -661,6 +680,44 @@ class YoctoBuilderPanel {
         </div>
         ` : '';
         html = html.replace(/\{\{FLASH_SDCARD_ERRORS\}\}/g, flashSdcardErrorsHtml);
+
+        // Flash USB status section
+        html = html.replace(/\{\{FLASH_USB_STATUS_CLASS\}\}/g, flashUsbStatus.running ? 'running' : 'stopped');
+        html = html.replace(/\{\{FLASH_USB_STATUS_TEXT\}\}/g, flashUsbStatus.running ? 'Running' : 'Not Running');
+        html = html.replace(/\{\{FLASH_USB_START_DISABLED\}\}/g, flashUsbStatus.running ? 'disabled' : '');
+        html = html.replace(/\{\{FLASH_USB_WATCH_DISABLED\}\}/g, !flashUsbStatus.running ? 'disabled' : '');
+        html = html.replace(/\{\{FLASH_USB_TERMINATE_DISABLED\}\}/g, !flashUsbStatus.running ? 'disabled' : '');
+
+        // Flash USB elapsed time section
+        const flashUsbElapsedHtml = flashUsbStatus.elapsed ? `
+        <div class="info-row">
+            <span class="info-label">Elapsed:</span>
+            <span id="flashUsbElapsedTime" data-elapsed-seconds="${flashUsbStatus.elapsedSeconds || 0}" data-is-running="${flashUsbStatus.running}">${flashUsbStatus.elapsed}</span>
+        </div>
+        ` : '';
+        html = html.replace(/\{\{FLASH_USB_ELAPSED_TIME\}\}/g, flashUsbElapsedHtml);
+
+        // Flash USB last log lines section
+        const flashUsbLogHtml = flashUsbStatus.lastLogLines && flashUsbStatus.lastLogLines.length > 0 ? `
+        <div class="info-row">
+            <span class="info-label">Last log:</span>
+        </div>
+        <div class="error-code-window">
+            <pre><code>${flashUsbStatus.lastLogLines.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
+        </div>
+        ` : '';
+        html = html.replace(/\{\{FLASH_USB_LAST_LOG\}\}/g, flashUsbLogHtml);
+
+        // Flash USB errors section
+        const flashUsbErrorsHtml = flashUsbStatus.errors && flashUsbStatus.errors.length > 0 ? `
+        <div class="error">
+            <strong>Errors:</strong>
+            <div class="error-code-window">
+                <pre><code>${flashUsbStatus.errors.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
+            </div>
+        </div>
+        ` : '';
+        html = html.replace(/\{\{FLASH_USB_ERRORS\}\}/g, flashUsbErrorsHtml);
 
         return html;
     }
@@ -923,6 +980,18 @@ class YoctoBuilderPanel {
         }
 
         return status;
+    }
+
+    private async getFlashUsbStatus(workspacePath: string): Promise<FlashStatus> {
+        try {
+            const { stdout } = await execWithTimeout('make firmware-controller-flash-usb-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
+            return this.parseFlashStatusOutput(stdout);
+        } catch (error: any) {
+            if (error?.stdout) {
+                return this.parseFlashStatusOutput(error.stdout);
+            }
+            return { running: false };
+        }
     }
 
     public dispose() {

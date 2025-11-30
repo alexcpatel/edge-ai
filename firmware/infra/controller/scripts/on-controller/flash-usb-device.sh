@@ -7,6 +7,8 @@ ARCHIVE_PATH="$1"
 FLASH_MODE="${2:-spi-only}"
 LOG_FILE="${LOG_FILE:-/tmp/usb-flash.log}"
 
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 [ -z "$ARCHIVE_PATH" ] && { echo "Usage: $0 <archive> [spi-only|full]"; exit 1; }
 [ ! -f "$ARCHIVE_PATH" ] && { echo "Archive not found: $ARCHIVE_PATH"; exit 1; }
 file "$ARCHIVE_PATH" | grep -q "gzip" || { echo "Not a gzip archive"; exit 1; }
@@ -43,12 +45,19 @@ else
 fi
 
 echo "Flashing ($FLASH_MODE)..."
+FLASH_EXIT=0
 if [ "$EUID" -ne 0 ]; then
-    sudo "$CMD" "${ARGS:-}" 2>&1 | tee "$LOG_FILE"
+    sudo "$CMD" "${ARGS:-}" 2>&1 | tee -a "$LOG_FILE"
     FLASH_EXIT="${PIPESTATUS[0]}"
 else
-    "$CMD" "${ARGS:-}" 2>&1 | tee "$LOG_FILE"
+    "$CMD" "${ARGS:-}" 2>&1 | tee -a "$LOG_FILE"
     FLASH_EXIT="${PIPESTATUS[0]}"
+fi
+
+if [ "$FLASH_EXIT" -eq 0 ]; then
+    echo "USB flash complete"
+else
+    echo "USB flash failed with exit code $FLASH_EXIT"
 fi
 
 exit "$FLASH_EXIT"

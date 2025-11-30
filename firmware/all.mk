@@ -80,6 +80,16 @@ firmware-controller-push-tegraflash: ## Push tegraflash to controller
 
 firmware-controller-flash-usb: firmware-controller-deploy ## Flash Jetson via USB (FULL=--full for full image)
 	@$(CONTROLLER_DIR)/scripts/flash-usb.sh start $(FULL)
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh watch
+
+firmware-controller-flash-usb-status: ## Check USB flash status
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh status
+
+firmware-controller-flash-usb-watch: ## Tail USB flash log
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh watch
+
+firmware-controller-flash-usb-terminate: ## Terminate USB flash session
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh terminate
 
 firmware-controller-flash-sdcard: firmware-controller-deploy ## Flash SD card (DEVICE=/dev/sdX)
 	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh start "$(DEVICE)"
