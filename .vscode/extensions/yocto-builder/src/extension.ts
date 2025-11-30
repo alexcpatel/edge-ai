@@ -99,31 +99,31 @@ export function activate(context: vscode.ExtensionContext) {
             }),
             vscode.commands.registerCommand('yocto-builder.instanceStart', () => {
                 outputChannel.appendLine('Command: instanceStart');
-                runCommand('make ec2-start');
+                runCommand('make firmware-ec2-start');
             }),
             vscode.commands.registerCommand('yocto-builder.instanceStop', () => {
                 outputChannel.appendLine('Command: instanceStop');
-                runCommand('make ec2-stop');
+                runCommand('make firmware-ec2-stop');
             }),
             vscode.commands.registerCommand('yocto-builder.instanceSsh', () => {
                 outputChannel.appendLine('Command: instanceSsh');
-                runCommand('make ec2-ssh', 'Yocto Builder - SSH');
+                runCommand('make firmware-ec2-ssh', 'Yocto Builder - SSH');
             }),
             vscode.commands.registerCommand('yocto-builder.instanceHealth', () => {
                 outputChannel.appendLine('Command: instanceHealth');
-                runCommand('make ec2-health', 'Yocto Builder - Health');
+                runCommand('make firmware-ec2-health', 'Yocto Builder - Health');
             }),
             vscode.commands.registerCommand('yocto-builder.buildStart', () => {
                 outputChannel.appendLine('Command: buildStart');
-                runCommand('make build', 'Yocto Builder - Build');
+                runCommand('make firmware-build', 'Yocto Builder - Build');
             }),
             vscode.commands.registerCommand('yocto-builder.buildWatch', () => {
                 outputChannel.appendLine('Command: buildWatch');
-                runCommand('make build-watch', 'Yocto Builder - Watch');
+                runCommand('make firmware-build-watch', 'Yocto Builder - Watch');
             }),
             vscode.commands.registerCommand('yocto-builder.buildTerminate', () => {
                 outputChannel.appendLine('Command: buildTerminate');
-                runCommand('make build-terminate', 'Yocto Builder - Terminate');
+                runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
             }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
@@ -281,7 +281,7 @@ class YoctoBuilderPanel {
             async message => {
                 switch (message.command) {
                     case 'instanceStart':
-                        runCommand('make ec2-start', 'Yocto Builder - Start');
+                        runCommand('make firmware-ec2-start', 'Yocto Builder - Start');
                         // Sync auto-stop preference to server after instance starts (silently, no terminal)
                         const autoStopPref = this._context.globalState.get<boolean>('autoStopOnBuildComplete', false);
                         if (autoStopPref) {
@@ -292,7 +292,7 @@ class YoctoBuilderPanel {
                                         const instanceStatus = await this.getInstanceStatus(wsFolder.uri.fsPath);
                                         if (instanceStatus.state?.toLowerCase() === 'running') {
                                             // Run silently without opening a terminal, with timeout
-                                            await execWithTimeout('make build-set-auto-stop', { cwd: wsFolder.uri.fsPath, timeout: 15000 });
+                                            await execWithTimeout('make firmware-build-set-auto-stop', { cwd: wsFolder.uri.fsPath, timeout: 15000 });
                                         }
                                     } catch (error) {
                                         // Ignore errors (including timeouts)
@@ -305,13 +305,13 @@ class YoctoBuilderPanel {
                         await this.handleInstanceStop();
                         break;
                     case 'instanceSsh':
-                        runCommand('make ec2-ssh', 'Yocto Builder - SSH');
+                        runCommand('make firmware-ec2-ssh', 'Yocto Builder - SSH');
                         break;
                     case 'instanceHealth':
-                        runCommand('make ec2-health', 'Yocto Builder - Health');
+                        runCommand('make firmware-ec2-health', 'Yocto Builder - Health');
                         break;
                     case 'buildStart':
-                        runCommand('make build', 'Yocto Builder - Build');
+                        runCommand('make firmware-build', 'Yocto Builder - Build');
                         // Sync auto-stop preference to server after instance starts (silently, no terminal)
                         const autoStopPreference = this._context.globalState.get<boolean>('autoStopOnBuildComplete', false);
                         if (autoStopPreference) {
@@ -323,7 +323,7 @@ class YoctoBuilderPanel {
                                         const instanceStatus = await this.getInstanceStatus(wsFolder.uri.fsPath);
                                         if (instanceStatus.state?.toLowerCase() === 'running') {
                                             // Run silently without opening a terminal, with timeout
-                                            await execWithTimeout('make build-set-auto-stop', { cwd: wsFolder.uri.fsPath, timeout: 15000 });
+                                            await execWithTimeout('make firmware-build-set-auto-stop', { cwd: wsFolder.uri.fsPath, timeout: 15000 });
                                         }
                                     } catch (error) {
                                         // Ignore errors (including timeouts)
@@ -333,10 +333,10 @@ class YoctoBuilderPanel {
                         }
                         break;
                     case 'buildWatch':
-                        runCommand('make build-watch', 'Yocto Builder - Watch');
+                        runCommand('make firmware-build-watch', 'Yocto Builder - Watch');
                         break;
                     case 'buildTerminate':
-                        runCommand('make build-terminate', 'Yocto Builder - Terminate');
+                        runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
                         break;
                     case 'toggleStopOnComplete':
                         // Store preference locally (works even when instance is not running)
@@ -350,10 +350,10 @@ class YoctoBuilderPanel {
                                 if (instanceStatus.state?.toLowerCase() === 'running') {
                                     if (message.value) {
                                         // Run silently without opening a terminal, with timeout
-                                        await execWithTimeout('make build-set-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
+                                        await execWithTimeout('make firmware-build-set-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
                                     } else {
                                         // Run silently without opening a terminal, with timeout
-                                        await execWithTimeout('make build-unset-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
+                                        await execWithTimeout('make firmware-build-unset-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
                                     }
                                 }
                             } catch (error) {
@@ -416,7 +416,7 @@ class YoctoBuilderPanel {
                     'Cancel'
                 );
                 if (result === 'Terminate Build') {
-                    runCommand('make build-terminate');
+                    runCommand('make firmware-build-terminate');
                     // Wait a moment and check again
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     const newBuildStatus = await this.getBuildStatus(workspaceFolder.uri.fsPath);
@@ -433,7 +433,7 @@ class YoctoBuilderPanel {
         }
 
         // Stop the instance
-        runCommand('make ec2-stop');
+        runCommand('make firmware-ec2-stop');
     }
 
     private async _getHtmlForWebview(webview: vscode.Webview): Promise<string> {
@@ -491,7 +491,7 @@ class YoctoBuilderPanel {
 
         if (instanceRunning) {
             try {
-                const { stdout } = await execWithTimeout('make build-check-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
+                const { stdout } = await execWithTimeout('make firmware-build-check-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
                 autoStopEnabled = stdout.includes('enabled') || stdout.trim() === '1';
                 // Sync local preference if server has different value
                 if (autoStopEnabled !== localPreference) {
@@ -622,7 +622,7 @@ class YoctoBuilderPanel {
 
     private async getInstanceStatus(workspacePath: string): Promise<InstanceStatus> {
         try {
-            const { stdout } = await execWithTimeout('make ec2-status', { cwd: workspacePath, timeout: 10000 });
+            const { stdout } = await execWithTimeout('make firmware-ec2-status', { cwd: workspacePath, timeout: 10000 });
             const lines = stdout.split('\n');
 
             const status: InstanceStatus = {
@@ -653,7 +653,7 @@ class YoctoBuilderPanel {
 
     private async getBuildStatus(workspacePath: string): Promise<BuildStatus> {
         try {
-            const { stdout } = await execWithTimeout('make build-status', { cwd: workspacePath, timeout: 10000 });
+            const { stdout } = await execWithTimeout('make firmware-build-status', { cwd: workspacePath, timeout: 10000 });
             return this.parseBuildStatusOutput(stdout);
         } catch (error: any) {
             // execWithTimeout throws on non-zero exit codes or timeout, but stdout is still available in the error
