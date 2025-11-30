@@ -11,7 +11,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 EC2_CONNECT_CACHE_DIR="${HOME}/.ssh/ec2-instance-connect-cache"
 
 # Generate temporary SSH key pair with caching to avoid rate limits
-# Keys are cached and reused for 50 seconds (EC2 Instance Connect keys are valid for 60 seconds)
+# Keys are cached and reused for 58 seconds (EC2 Instance Connect keys are valid for 60 seconds)
+# Using Ed25519 for much faster key generation (milliseconds vs seconds for RSA 4096)
 setup_temp_ssh_key() {
     local instance_id="$1"
     local cache_file="${EC2_CONNECT_CACHE_DIR}/${instance_id}.key"
@@ -25,7 +26,7 @@ setup_temp_ssh_key() {
     local temp_private_key="$cache_file"
     local temp_public_key="${temp_private_key}.pub"
 
-    # Check if we have a cached key that's still valid (< 50 seconds old)
+    # Check if we have a cached key that's still valid (< 58 seconds old)
     if [ -f "$cache_file" ] && [ -f "$cache_time_file" ]; then
         local cache_timestamp
         cache_timestamp=$(cat "$cache_time_file" 2>/dev/null || echo "0")
@@ -33,7 +34,7 @@ setup_temp_ssh_key() {
         current_timestamp=$(date +%s)
         cache_age=$((current_timestamp - cache_timestamp))
 
-        if [ $cache_age -lt 50 ] && [ -f "$cache_file" ]; then
+        if [ $cache_age -lt 58 ] && [ -f "$cache_file" ]; then
             # Reuse cached key
             echo "$cache_file"
             return 0
@@ -42,7 +43,8 @@ setup_temp_ssh_key() {
         rm -f "$temp_private_key" "$temp_public_key" "$cache_time_file"
     fi
 
-    ssh-keygen -t rsa -b 4096 -f "$temp_private_key" -N "" -q
+    # Use Ed25519 for fast key generation (milliseconds vs seconds for RSA 4096)
+    ssh-keygen -t ed25519 -f "$temp_private_key" -N "" -q
     chmod 600 "$temp_private_key"
 
     # Send public key to instance via EC2 Instance Connect API

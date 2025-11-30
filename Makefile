@@ -84,7 +84,7 @@ controller-push-tegraflash: ## Push tegraflash archive from EC2 to controller
 controller-flash-usb: ## Flash Jetson via USB from controller (use FULL=--full for full image flash)
 	@$(CONTROLLER_DIR)/scripts/flash-usb.sh $(FULL)
 
-flash-sdcard: ## Flash SD card from controller (interactive device selection, or specify DEVICE=/dev/sdX)
+controller-flash-sdcard: ## Flash SD card from controller
 	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh "$(DEVICE)"
 
 # Local Jetson flashing

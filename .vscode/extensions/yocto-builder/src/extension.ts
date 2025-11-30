@@ -165,7 +165,7 @@ export function activate(context: vscode.ExtensionContext) {
                 refreshInProgress = false;
             });
         }
-    }, 5000);
+    }, 15000);
 
     context.subscriptions.push({
         dispose: () => clearInterval(refreshInterval)
@@ -450,8 +450,11 @@ class YoctoBuilderPanel {
 </html>`;
         }
 
-        const instanceStatus = await this.getInstanceStatus(workspaceFolder.uri.fsPath);
-        const buildStatus = await this.getBuildStatus(workspaceFolder.uri.fsPath);
+        // Run status checks in parallel to reduce delay
+        const [instanceStatus, buildStatus] = await Promise.all([
+            this.getInstanceStatus(workspaceFolder.uri.fsPath),
+            this.getBuildStatus(workspaceFolder.uri.fsPath)
+        ]);
 
         // Read HTML template
         const htmlPath = path.join(this._extensionPath, 'media', 'webview.html');
@@ -526,18 +529,21 @@ class YoctoBuilderPanel {
         html = html.replace(/\{\{BUILD_ELAPSED_TIME\}\}/g, elapsedHtml);
 
         // Build task progress section
-        const taskProgressHtml = buildStatus.taskProgress && buildStatus.taskProgress.total > 0 ? `
-        <div class="info-row">
+        let taskProgressHtml = '';
+        if (buildStatus.taskProgress && buildStatus.taskProgress.total > 0) {
+            const percentage = (buildStatus.taskProgress.current / buildStatus.taskProgress.total) * 100;
+            const percentageStr = percentage.toFixed(1);
+            taskProgressHtml = `<div class="info-row">
             <span class="info-label">Progress:</span>
             <span>${buildStatus.taskProgress.current} / ${buildStatus.taskProgress.total} tasks</span>
         </div>
         <div class="progress-bar-container">
-            <div class="progress-bar">
-                <div class="progress-bar-fill" style="width: ${Math.min(100, Math.max(0, (buildStatus.taskProgress.current / buildStatus.taskProgress.total * 100))).toFixed(1)}%"></div>
+            <div class="progress-bar-wrapper">
+                <div class="progress-bar-fg" style="width: ${percentageStr}%"></div>
             </div>
-            <span class="progress-percentage">${Math.min(100, Math.max(0, (buildStatus.taskProgress.current / buildStatus.taskProgress.total * 100))).toFixed(1)}%</span>
-        </div>
-        ` : '';
+            <span class="progress-percentage">${percentageStr}%</span>
+        </div>`;
+        }
         html = html.replace(/\{\{BUILD_TASK_PROGRESS\}\}/g, taskProgressHtml);
 
         // Last successful build section
@@ -616,7 +622,7 @@ class YoctoBuilderPanel {
 
     private async getInstanceStatus(workspacePath: string): Promise<InstanceStatus> {
         try {
-            const { stdout } = await execWithTimeout('make instance-status', { cwd: workspacePath, timeout: 20000 });
+            const { stdout } = await execWithTimeout('make instance-status', { cwd: workspacePath, timeout: 10000 });
             const lines = stdout.split('\n');
 
             const status: InstanceStatus = {
@@ -647,7 +653,7 @@ class YoctoBuilderPanel {
 
     private async getBuildStatus(workspacePath: string): Promise<BuildStatus> {
         try {
-            const { stdout } = await execWithTimeout('make build-status', { cwd: workspacePath, timeout: 20000 });
+            const { stdout } = await execWithTimeout('make build-status', { cwd: workspacePath, timeout: 10000 });
             return this.parseBuildStatusOutput(stdout);
         } catch (error: any) {
             // execWithTimeout throws on non-zero exit codes or timeout, but stdout is still available in the error

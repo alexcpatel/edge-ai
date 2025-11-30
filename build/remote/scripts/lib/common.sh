@@ -27,15 +27,53 @@ check_aws_creds() {
     fi
 }
 
+# Cache directory for instance metadata
+INSTANCE_CACHE_DIR="${HOME}/.ssh/ec2-instance-cache"
+
 get_instance_id() {
+    # Cache instance ID to avoid redundant AWS API calls
+    local cache_file="${INSTANCE_CACHE_DIR}/instance_id"
+    local cache_time_file="${INSTANCE_CACHE_DIR}/instance_id.time"
+    local cache_max_age=300  # Cache for 5 minutes
+
+    mkdir -p "$INSTANCE_CACHE_DIR"
+    chmod 700 "$INSTANCE_CACHE_DIR"
+
+    # Check if we have a cached instance ID that's still valid
+    if [ -f "$cache_file" ] && [ -f "$cache_time_file" ]; then
+        local cache_timestamp
+        cache_timestamp=$(cat "$cache_time_file" 2>/dev/null || echo "0")
+        local current_timestamp
+        current_timestamp=$(date +%s)
+        local cache_age=$((current_timestamp - cache_timestamp))
+
+        if [ $cache_age -lt $cache_max_age ]; then
+            local cached_id
+            cached_id=$(cat "$cache_file" 2>/dev/null || echo "")
+            if [ -n "$cached_id" ] && [ "$cached_id" != "None" ]; then
+                echo "$cached_id"
+                return 0
+            fi
+        fi
+    fi
+
     # Get instance ID, excluding terminated instances
     # Prefer running instances, but return any non-terminated instance
-    aws ec2 describe-instances \
+    local instance_id
+    instance_id=$(aws ec2 describe-instances \
         --region "$AWS_REGION" \
         --filters "Name=tag:Name,Values=$EC2_INSTANCE_NAME" \
                   "Name=instance-state-name,Values=pending,running,stopping,stopped" \
         --query "Reservations[0].Instances[0].InstanceId" \
-        --output text 2>/dev/null || echo ""
+        --output text 2>/dev/null || echo "")
+
+    # Cache the result
+    if [ -n "$instance_id" ] && [ "$instance_id" != "None" ]; then
+        echo "$instance_id" > "$cache_file"
+        echo "$(date +%s)" > "$cache_time_file"
+    fi
+
+    echo "$instance_id"
 }
 
 get_instance_or_exit() {

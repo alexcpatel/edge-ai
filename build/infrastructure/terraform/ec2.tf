@@ -67,7 +67,7 @@ resource "aws_instance" "yocto_builder" {
     iops                  = 3000
     throughput            = 125
     encrypted             = false
-    delete_on_termination = true
+    delete_on_termination = false # Keep volume when instance is terminated
   }
 
   tags = {
@@ -79,8 +79,7 @@ resource "aws_instance" "yocto_builder" {
   lifecycle {
     ignore_changes = [
       user_data,
-      vpc_security_group_ids,
-      root_block_device
+      vpc_security_group_ids
     ]
   }
 }

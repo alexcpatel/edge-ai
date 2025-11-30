@@ -245,20 +245,22 @@
             align-items: center;
             gap: 8px;
             margin-top: 4px;
+            margin-bottom: 4px;
         }
 
-        .progress-bar {
-            flex: 1;
+        .progress-bar-wrapper {
+            flex: 1 1 auto;
+            min-width: 100px;
             height: 8px;
-            background-color: var(--vscode-progressBar-background);
+            background-color: #333;
             border-radius: 4px;
             overflow: hidden;
-            border: 1px solid var(--vscode-panel-border);
         }
 
-        .progress-bar-fill {
+        .progress-bar-fg {
             height: 100%;
-            background-color: var(--vscode-progressBar-foreground);
+            background-color: #4caf50;
+            border-radius: 4px;
             transition: width 0.3s ease;
         }
 
@@ -267,6 +269,7 @@
             color: var(--vscode-descriptionForeground);
             min-width: 40px;
             text-align: right;
+            flex-shrink: 0;
         }
 
         code {
@@ -421,11 +424,34 @@
             }
         }
 
+        // Set progress bar width using JavaScript to calculate exact pixels
+        function setProgressBarWidth() {
+            const progressFg = document.querySelector('.progress-bar-fg');
+            if (progressFg) {
+                const percent = parseFloat(progressFg.getAttribute('data-percent'));
+                if (!isNaN(percent) && percent >= 0 && percent <= 100) {
+                    const wrapper = progressFg.parentElement;
+                    if (wrapper) {
+                        const containerWidth = wrapper.offsetWidth;
+                        const pixelWidth = (containerWidth * percent) / 100;
+                        progressFg.style.width = pixelWidth + 'px';
+                    }
+                }
+            }
+        }
+
+        // Set width immediately and on resize
+        function initProgressBar() {
+            setProgressBarWidth();
+            window.addEventListener('resize', setProgressBarWidth);
+        }
+
         // Show animation on page load/update (with small delay to ensure DOM is ready)
         setTimeout(() => {
             showRefreshAnimation();
             startElapsedTimeTracking();
-        }, 100);
+            initProgressBar();
+        }, 50);
 
         function instanceStart() {
             vscode.postMessage({ command: 'instanceStart' });

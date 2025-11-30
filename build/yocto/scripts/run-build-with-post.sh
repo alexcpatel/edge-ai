@@ -5,6 +5,10 @@ IFS=$'\n\t'
 # Build script that runs in tmux session
 # Runs Yocto build and optionally post-build steps
 
+# Ensure PATH includes user's local bin (where pip installs --user scripts)
+# This must be set early, before any commands that might need it
+export PATH="$HOME/.local/bin:$PATH"
+
 KAS_CONFIG="$1"
 YOCTO_DIR="$2"
 LOG_FILE="/tmp/yocto-build.log"
@@ -20,6 +24,13 @@ YOCTO_MACHINE="${YOCTO_MACHINE:-jetson-orin-nano-devkit}"
 log_info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >> "$LOG_FILE"; }
 log_success() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+# Verify kas is available before proceeding
+if ! command -v kas >/dev/null 2>&1; then
+    log_error "kas command not found. PATH: $PATH"
+    log_error "Please ensure kas is installed: python3 -m pip install --user --break-system-packages kas"
+    exit 1
+fi
 
 # Check if post-build should run
 should_run_post_build() {
@@ -147,7 +158,6 @@ run_post_build() {
 }
 
 # Main execution
-export PATH="$HOME/.local/bin:$PATH"
 cd "$YOCTO_DIR"
 
 # Run the build

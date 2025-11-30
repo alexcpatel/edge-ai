@@ -46,8 +46,19 @@ start_build() {
         exit 1
     fi
 
-    # Wait a moment and verify the session is actually running
-    sleep 2
+    # Verify the session is running (retry up to 3 times with short delays)
+    local retries=3
+    local retry_delay=0.5
+    while [ $retries -gt 0 ]; do
+        if is_build_running "$ip"; then
+            break
+        fi
+        retries=$((retries - 1))
+        if [ $retries -gt 0 ]; then
+            sleep $retry_delay
+        fi
+    done
+
     if ! is_build_running "$ip"; then
         log_error "Build session failed to start. Check logs:"
         ssh_cmd "$ip" "tail -50 /tmp/yocto-build.log 2>/dev/null || echo 'No log file found'" || true
@@ -87,43 +98,67 @@ check_status() {
         exit 1
     fi
 
-    if is_build_running "$ip"; then
-        echo "Build session is running"
+    # Batch all status checks into a single SSH call to reduce overhead
+    # Use heredoc for readability - local vars (YOCTO_IMAGE, YOCTO_DIR) expand here, remote vars ($elapsed, etc.) expand on remote
+    local status_output
+    status_output=$(ssh_cmd "$ip" <<REMOTE_SCRIPT
+        # Check if build session is running
+        if tmux has-session -t yocto-build 2>/dev/null; then
+            echo 'BUILD_RUNNING=1'
 
-        # Get elapsed time of the actual build process (kas or bitbake)
-        elapsed=$(ssh_cmd "$ip" \
-            "pgrep -f 'bitbake.*$YOCTO_IMAGE\|kas.*build' | head -1 | xargs -I {} ps -o etime= -p {} 2>/dev/null" 2>/dev/null | tr -d ' ' || echo "")
+            # Get elapsed time of the actual build process (kas or bitbake)
+            elapsed=\$(pgrep -f 'bitbake.*${YOCTO_IMAGE}\|kas.*build' | head -1 | xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' ' || echo '')
+            if [ -n "\$elapsed" ]; then
+                echo "ELAPSED=\$elapsed"
+            else
+                # Fallback: get elapsed time from tmux session process itself
+                elapsed=\$(tmux list-sessions -F '#{session_name} #{pane_pid}' | grep '^yocto-build ' | awk '{print \$2}' | xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' ' || echo '')
+                if [ -n "\$elapsed" ]; then
+                    echo "ELAPSED=\$elapsed"
+                fi
+            fi
+
+            # Extract task progress from build log (only check last 20 lines for efficiency)
+            if [ -f /tmp/yocto-build.log ]; then
+                task_progress=\$(tail -20 /tmp/yocto-build.log 2>/dev/null | grep -oE 'Running task [0-9]+ of [0-9]+' | tail -1 || echo '')
+                if [ -n "\$task_progress" ]; then
+                    echo "TASK_PROGRESS=\$task_progress"
+                fi
+            fi
+        else
+            echo 'BUILD_RUNNING=0'
+            # Check for last successful build timestamp
+            if [ -f ${YOCTO_DIR}/.last-successful-build ]; then
+                echo "LAST_SUCCESS=\$(cat ${YOCTO_DIR}/.last-successful-build 2>/dev/null || echo '')"
+            fi
+        fi
+REMOTE_SCRIPT
+    )
+
+    # Parse the output
+    local build_running elapsed task_progress last_success
+    build_running=$(echo "$status_output" | grep -E '^BUILD_RUNNING=' | cut -d'=' -f2 || echo "0")
+    elapsed=$(echo "$status_output" | grep -E '^ELAPSED=' | cut -d'=' -f2- || echo "")
+    task_progress=$(echo "$status_output" | grep -E '^TASK_PROGRESS=' | cut -d'=' -f2- || echo "")
+    last_success=$(echo "$status_output" | grep -E '^LAST_SUCCESS=' | cut -d'=' -f2- || echo "")
+
+    if [ "$build_running" = "1" ]; then
+        echo "Build session is running"
 
         if [ -n "$elapsed" ]; then
             echo "Elapsed time: $elapsed"
         else
-            # Fallback: get elapsed time from tmux session process itself
-            elapsed=$(ssh_cmd "$ip" \
-                "tmux list-sessions -F '#{session_name} #{pane_pid}' | grep '^yocto-build ' | awk '{print \$2}' | xargs -I {} ps -o etime= -p {} 2>/dev/null" 2>/dev/null | tr -d ' ' || echo "")
-
-            if [ -n "$elapsed" ]; then
-                echo "Elapsed time: $elapsed"
-            else
-                # Last fallback: session is active but we can't get process time
-                echo "Build session active (bitbake process not found yet)"
-            fi
+            echo "Build session active (bitbake process not found yet)"
         fi
 
-        # Extract task progress from build log (only check last 20 lines for efficiency)
-        if ssh_cmd "$ip" "test -f /tmp/yocto-build.log" 2>/dev/null; then
-            local task_progress
-            task_progress=$(ssh_cmd "$ip" \
-                "tail -20 /tmp/yocto-build.log 2>/dev/null | grep -oE 'Running task [0-9]+ of [0-9]+' | tail -1" 2>/dev/null || echo "")
+        if [ -n "$task_progress" ]; then
+            # Extract current and total tasks
+            local current_task total_tasks
+            current_task=$(echo "$task_progress" | grep -oE 'Running task [0-9]+' | grep -oE '[0-9]+' || echo "")
+            total_tasks=$(echo "$task_progress" | grep -oE 'of [0-9]+' | grep -oE '[0-9]+' || echo "")
 
-            if [ -n "$task_progress" ]; then
-                # Extract current and total tasks
-                local current_task total_tasks
-                current_task=$(echo "$task_progress" | grep -oE 'Running task [0-9]+' | grep -oE '[0-9]+' || echo "")
-                total_tasks=$(echo "$task_progress" | grep -oE 'of [0-9]+' | grep -oE '[0-9]+' || echo "")
-
-                if [ -n "$current_task" ] && [ -n "$total_tasks" ]; then
-                    echo "Task progress: $current_task/$total_tasks"
-                fi
+            if [ -n "$current_task" ] && [ -n "$total_tasks" ]; then
+                echo "Task progress: $current_task/$total_tasks"
             fi
         fi
 
@@ -132,14 +167,13 @@ check_status() {
         echo "No build session found"
 
         # Check for last successful build timestamp
-        SUCCESS_FILE="$YOCTO_DIR/.last-successful-build"
-        if ssh_cmd "$ip" "test -f $SUCCESS_FILE" 2>/dev/null; then
+        if [ -n "$last_success" ]; then
             local timestamp
-            timestamp=$(ssh_cmd "$ip" "cat $SUCCESS_FILE 2>/dev/null" 2>/dev/null | tr -d '\n' || echo "")
+            timestamp=$(echo "$last_success" | tr -d '\n' || echo "")
             if [ -n "$timestamp" ] && [ "$timestamp" -gt 0 ] 2>/dev/null; then
                 # Convert Unix timestamp to readable date
                 local readable_date
-                readable_date=$(ssh_cmd "$ip" "date -d @$timestamp '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r $timestamp '+%Y-%m-%d %H:%M:%S' 2>/dev/null" 2>/dev/null || echo "")
+                readable_date=$(date -d "@$timestamp" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -r "$timestamp" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "")
                 if [ -n "$readable_date" ]; then
                     echo "Last successful build: $readable_date"
                 fi
