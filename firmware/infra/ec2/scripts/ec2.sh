@@ -68,7 +68,6 @@ start_instance() {
     for _ in {1..120}; do
         ssh_cmd "$ip" "echo ready" >/dev/null 2>&1 && {
             log_success "EC2 ready at $ip"
-            setup_ec2 "$ip"
             return 0
         }
         sleep 2

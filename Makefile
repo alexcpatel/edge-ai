@@ -1,7 +1,7 @@
 .PHONY: help
 .DEFAULT_GOAL := help
 
-include makefiles/firmware.mk
+include firmware/all.mk
 
 help: ## Show this help message
 	@echo "Available targets:"
