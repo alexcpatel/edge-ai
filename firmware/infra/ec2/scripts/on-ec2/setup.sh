@@ -2,20 +2,38 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Yocto setup script (runs on EC2 instance)
+# Instance setup script (runs on EC2 instance)
+# Sets up the full build environment including Yocto dependencies and AWS CLI
 # Assumes Debian/Ubuntu system with apt-get
 
 # Install dependencies
 sudo apt-get update -y
 
-# Install required packages
+# Install required packages (Yocto + general tools)
 sudo apt-get install -y \
     gawk wget git diffstat unzip texinfo gcc g++ make \
     chrpath socat xterm zstd \
     python3 python3-pip python3-pexpect python3-jinja2 \
     libncurses-dev cpio file \
     patch bzip2 tar perl \
-    lz4 libtirpc-dev rpcbind tmux
+    lz4 libtirpc-dev rpcbind tmux \
+    curl
+
+# Install AWS CLI (required for auto-stop feature)
+if ! command -v aws >/dev/null 2>&1; then
+    echo "Installing AWS CLI..."
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+    unzip -q -o /tmp/awscliv2.zip -d /tmp
+    sudo /tmp/aws/install --update
+    rm -rf /tmp/awscliv2.zip /tmp/aws
+fi
+
+# Verify AWS CLI is available
+if command -v aws >/dev/null 2>&1; then
+    echo "AWS CLI installed: $(aws --version)"
+else
+    echo "Warning: AWS CLI installation failed"
+fi
 
 # Ensure lz4c is available (lz4 package provides lz4, create symlink for lz4c if needed)
 # Put symlink in /usr/bin to ensure it's in PATH

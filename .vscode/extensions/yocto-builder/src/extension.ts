@@ -99,23 +99,23 @@ export function activate(context: vscode.ExtensionContext) {
             }),
             vscode.commands.registerCommand('yocto-builder.instanceStart', () => {
                 outputChannel.appendLine('Command: instanceStart');
-                runCommand('make instance-start');
+                runCommand('make ec2-start');
             }),
             vscode.commands.registerCommand('yocto-builder.instanceStop', () => {
                 outputChannel.appendLine('Command: instanceStop');
-                runCommand('make instance-stop');
+                runCommand('make ec2-stop');
             }),
             vscode.commands.registerCommand('yocto-builder.instanceSsh', () => {
                 outputChannel.appendLine('Command: instanceSsh');
-                runCommand('make instance-ssh', 'Yocto Builder - SSH');
+                runCommand('make ec2-ssh', 'Yocto Builder - SSH');
             }),
             vscode.commands.registerCommand('yocto-builder.instanceHealth', () => {
                 outputChannel.appendLine('Command: instanceHealth');
-                runCommand('make instance-health', 'Yocto Builder - Health');
+                runCommand('make ec2-health', 'Yocto Builder - Health');
             }),
             vscode.commands.registerCommand('yocto-builder.buildStart', () => {
                 outputChannel.appendLine('Command: buildStart');
-                runCommand('make build-image', 'Yocto Builder - Build');
+                runCommand('make build', 'Yocto Builder - Build');
             }),
             vscode.commands.registerCommand('yocto-builder.buildWatch', () => {
                 outputChannel.appendLine('Command: buildWatch');
@@ -219,7 +219,7 @@ class YoctoBuilderProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
     async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
         if (!element) {
             return [
-                new StatusItem('Instance Status', 'instance-status'),
+                new StatusItem('EC2 Status', 'ec2-status'),
                 new StatusItem('Build Status', 'build-status')
             ];
         }
@@ -281,7 +281,7 @@ class YoctoBuilderPanel {
             async message => {
                 switch (message.command) {
                     case 'instanceStart':
-                        runCommand('make instance-start', 'Yocto Builder - Start');
+                        runCommand('make ec2-start', 'Yocto Builder - Start');
                         // Sync auto-stop preference to server after instance starts (silently, no terminal)
                         const autoStopPref = this._context.globalState.get<boolean>('autoStopOnBuildComplete', false);
                         if (autoStopPref) {
@@ -305,13 +305,13 @@ class YoctoBuilderPanel {
                         await this.handleInstanceStop();
                         break;
                     case 'instanceSsh':
-                        runCommand('make instance-ssh', 'Yocto Builder - SSH');
+                        runCommand('make ec2-ssh', 'Yocto Builder - SSH');
                         break;
                     case 'instanceHealth':
-                        runCommand('make instance-health', 'Yocto Builder - Health');
+                        runCommand('make ec2-health', 'Yocto Builder - Health');
                         break;
                     case 'buildStart':
-                        runCommand('make build-image', 'Yocto Builder - Build');
+                        runCommand('make build', 'Yocto Builder - Build');
                         // Sync auto-stop preference to server after instance starts (silently, no terminal)
                         const autoStopPreference = this._context.globalState.get<boolean>('autoStopOnBuildComplete', false);
                         if (autoStopPreference) {
@@ -433,7 +433,7 @@ class YoctoBuilderPanel {
         }
 
         // Stop the instance
-        runCommand('make instance-stop');
+        runCommand('make ec2-stop');
     }
 
     private async _getHtmlForWebview(webview: vscode.Webview): Promise<string> {
@@ -622,7 +622,7 @@ class YoctoBuilderPanel {
 
     private async getInstanceStatus(workspacePath: string): Promise<InstanceStatus> {
         try {
-            const { stdout } = await execWithTimeout('make instance-status', { cwd: workspacePath, timeout: 10000 });
+            const { stdout } = await execWithTimeout('make ec2-status', { cwd: workspacePath, timeout: 10000 });
             const lines = stdout.split('\n');
 
             const status: InstanceStatus = {

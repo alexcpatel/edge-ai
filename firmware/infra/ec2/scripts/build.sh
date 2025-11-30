@@ -3,8 +3,8 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # Yocto build management
-# Usage: build-image.sh [start|status|watch|terminate]
-#   start:     Start build in tmux session (default)
+# Usage: build.sh [start|status|watch|terminate]
+#   start:     Upload source and start build in tmux session (default)
 #   status:    Check if build session is running
 #   watch:     Tail the build log file (allows scrolling in local terminal)
 #   terminate: Terminate running build session
@@ -16,6 +16,33 @@ is_build_running() {
     ssh_cmd "$ip" "tmux has-session -t yocto-build 2>/dev/null" >/dev/null 2>&1
 }
 
+upload_source() {
+    local ip="$1"
+    log_info "Uploading source files to EC2..."
+    ssh_cmd "$ip" "mkdir -p $REMOTE_SOURCE_DIR $YOCTO_DIR/config"
+
+    # Only upload what's needed for Yocto builds
+    rsync_cmd "$ip" -avz --progress \
+        --include='layers/' \
+        --include='layers/**' \
+        --include='sources/' \
+        --include='sources/**' \
+        --include='firmware/' \
+        --include='firmware/yocto/' \
+        --include='firmware/yocto/**' \
+        --include='firmware/infra/' \
+        --include='firmware/infra/ec2/' \
+        --include='firmware/infra/ec2/scripts/' \
+        --include='firmware/infra/ec2/scripts/on-ec2/' \
+        --include='firmware/infra/ec2/scripts/on-ec2/**' \
+        --exclude='*' \
+        --exclude='.git' \
+        "$REPO_ROOT/" \
+        "${EC2_USER}@${ip}:${REMOTE_SOURCE_DIR}/"
+
+    log_success "Upload completed"
+}
+
 start_build() {
     ip=$(get_instance_ip_or_exit)
 
@@ -25,6 +52,9 @@ start_build() {
         exit 1
     fi
 
+    # Upload source files first
+    upload_source "$ip"
+
     log_info "Starting Yocto build in tmux session 'yocto-build'..."
 
     # Configure tmux to disable mouse mode (prevents escape sequences from trackpad scrolling)
@@ -32,8 +62,8 @@ start_build() {
 
     # Start build in tmux session using KAS - session will exit when build completes (success or failure)
     # KAS manages its own work directory structure - run from YOCTO_DIR so it creates work dir there
-    KAS_CONFIG="${REMOTE_SOURCE_DIR}/build/yocto/config/kas.yml"
-    BUILD_SCRIPT="${REMOTE_SOURCE_DIR}/build/yocto/scripts/run-build-with-post.sh"
+    KAS_CONFIG="${REMOTE_SOURCE_DIR}/firmware/yocto/config/kas.yml"
+    BUILD_SCRIPT="${REMOTE_SOURCE_DIR}/firmware/yocto/scripts/run-build.sh"
 
     # Make sure build script is executable
     ssh_cmd "$ip" "chmod +x $BUILD_SCRIPT 2>/dev/null || true" || true
@@ -65,11 +95,12 @@ start_build() {
     fi
 
     # Start monitor script in background (if not already running)
-    MONITOR_SCRIPT="${REMOTE_SOURCE_DIR}/build/yocto/scripts/monitor-build-stop.sh"
+    MONITOR_SCRIPT="${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/monitor-build-stop.sh"
     ssh_cmd "$ip" "chmod +x $MONITOR_SCRIPT 2>/dev/null || true" || true
     ssh_cmd "$ip" "pkill -f 'monitor-build-stop.sh' 2>/dev/null || true" || true
-    # Start monitor (non-blocking, don't fail if it doesn't start immediately)
-    ssh_cmd "$ip" "nohup bash $MONITOR_SCRIPT > /tmp/build-monitor.log 2>&1 &" || true
+    # Start monitor as a proper daemon using setsid to detach from SSH session
+    # setsid creates a new session, preventing SSH from killing it on disconnect
+    ssh_cmd "$ip" "setsid bash $MONITOR_SCRIPT > /tmp/build-monitor.log 2>&1 < /dev/null &" || true
 
     log_success "Build started in tmux session 'yocto-build'"
     log_info "Use 'make build-watch' to view progress"
@@ -80,14 +111,14 @@ check_status() {
     instance_id=$(get_instance_id)
 
     if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
-        echo "Instance not found"
+        echo "EC2 not found"
         exit 1
     fi
 
     state=$(get_instance_state "$instance_id")
     if [ "$state" != "running" ]; then
-        echo "Instance is $state (not running)"
-        echo "No build session can be running when instance is stopped"
+        echo "EC2 is $state (not running)"
+        echo "No build session can be running when EC2 is stopped"
         exit 1
     fi
 
@@ -225,7 +256,7 @@ watch_build() {
     ip=$(get_instance_ip_or_exit)
 
     if ! is_build_running "$ip"; then
-        log_error "No build session found. Start a build first with 'make build-image'"
+        log_error "No build session found. Start a build first with 'make build'"
         exit 1
     fi
 
@@ -233,7 +264,7 @@ watch_build() {
 
     # Execute watch script from synced location
     # If SSH fails or is interrupted, that's okay - build is still running
-    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/build/yocto/scripts/watch-build.sh" || {
+    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/firmware/yocto/scripts/watch-build.sh" || {
         log_info "Watch session ended (build continues in background)"
         exit 0
     }
@@ -262,21 +293,21 @@ terminate_build() {
 
 set_auto_stop() {
     ip=$(get_instance_ip_or_exit)
-    FLAG_FILE="/tmp/auto-stop-instance"
+    FLAG_FILE="/tmp/auto-stop-ec2"
     ssh_cmd "$ip" "touch $FLAG_FILE"
-    log_success "Auto-stop enabled (instance will stop when build ends)"
+    log_success "Auto-stop enabled (EC2 will stop when build ends)"
 }
 
 unset_auto_stop() {
     ip=$(get_instance_ip_or_exit)
-    FLAG_FILE="/tmp/auto-stop-instance"
+    FLAG_FILE="/tmp/auto-stop-ec2"
     ssh_cmd "$ip" "rm -f $FLAG_FILE"
     log_success "Auto-stop disabled"
 }
 
 check_auto_stop() {
     ip=$(get_instance_ip_or_exit)
-    FLAG_FILE="/tmp/auto-stop-instance"
+    FLAG_FILE="/tmp/auto-stop-ec2"
     if ssh_cmd "$ip" "test -f $FLAG_FILE" 2>/dev/null; then
         echo "enabled"
     else
@@ -314,7 +345,7 @@ case "$ACTION" in
         echo "  status         - Check if build session is running"
         echo "  watch          - Tail the build log file (allows scrolling in local terminal)"
         echo "  terminate      - Terminate running build session"
-        echo "  set-auto-stop  - Enable auto-stop (instance stops when build ends)"
+        echo "  set-auto-stop  - Enable auto-stop (EC2 stops when build ends)"
         echo "  unset-auto-stop - Disable auto-stop"
         echo "  check-auto-stop - Check if auto-stop is enabled"
         exit 1

@@ -3,7 +3,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 # EC2 instance management
-# Usage: instance.sh [status|start|stop|ssh|health] [args...]
+# Usage: ec2.sh [status|start|stop|ssh|health] [args...]
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/diagnostics.sh"
@@ -15,6 +15,23 @@ get_instance_type() {
         --instance-ids "$instance_id" \
         --query "Reservations[0].Instances[0].InstanceType" \
         --output text 2>/dev/null || echo ""
+}
+
+setup_ec2() {
+    local ip="$1"
+    local setup_script="$(dirname "${BASH_SOURCE[0]}")/on-ec2/setup.sh"
+
+    log_info "Setting up EC2..."
+
+    # Run setup script with environment variables
+    ssh_cmd "$ip" \
+        "YOCTO_BRANCH='$YOCTO_BRANCH' \
+         YOCTO_MACHINE='$YOCTO_MACHINE' \
+         YOCTO_DIR='$YOCTO_DIR' \
+         REMOTE_SOURCE_DIR='$REMOTE_SOURCE_DIR' \
+         bash -s" < "$setup_script"
+
+    log_success "EC2 setup completed"
 }
 
 show_status() {
@@ -56,12 +73,12 @@ show_status() {
         fi
 
         if ! check_instance_connectivity "$ip" "$aws_healthy" 2>/dev/null; then
-            echo "⚠ Warning: Instance is running but not SSH-accessible"
-            echo "  Run 'make instance-health' for detailed diagnostics"
+            echo "⚠ Warning: EC2 is running but not SSH-accessible"
+            echo "  Run 'make ec2-health' for detailed diagnostics"
         fi
     elif [ "$state" == "stopped" ]; then
         echo ""
-        echo "Instance is stopped. Use 'make instance-start' to start it."
+        echo "EC2 is stopped. Use 'make ec2-start' to start it."
     fi
 }
 
@@ -95,7 +112,9 @@ start_instance() {
 
     for _ in {1..120}; do
         if ssh_cmd "$ip" "echo ready" >/dev/null 2>&1; then
-            log_success "Instance ready at $ip"
+            log_success "EC2 ready at $ip"
+            # Run EC2 setup (installs dependencies, AWS CLI, etc.)
+            setup_ec2 "$ip"
             return 0
         fi
         sleep 2
@@ -242,13 +261,18 @@ case "$ACTION" in
     health)
         health_check
         ;;
+    setup)
+        ip=$(get_instance_ip_or_exit)
+        setup_ec2 "$ip"
+        ;;
     *)
-        echo "Usage: $0 [status|start|stop|ssh|health] [args...]"
+        echo "Usage: $0 [status|start|stop|ssh|health|setup] [args...]"
         echo "  status       - Show instance status (default)"
         echo "  start        - Start/ensure instance is running"
         echo "  stop         - Stop instance"
         echo "  ssh          - SSH into the instance (passes through any additional args)"
         echo "  health       - Run comprehensive health diagnostics"
+        echo "  setup        - Re-run EC2 setup (install dependencies, AWS CLI, etc.)"
         exit 1
         ;;
 esac

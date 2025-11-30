@@ -5,11 +5,11 @@ IFS=$'\n\t'
 # Common functions and configuration
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REMOTE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+EC2_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-source "$REMOTE_DIR/config/aws-config.sh"
-source "$REMOTE_DIR/../yocto/config/yocto-config.sh"
+source "$EC2_DIR/config/aws-config.sh"
+source "$REPO_ROOT/firmware/yocto/config/yocto-config.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
