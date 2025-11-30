@@ -109,19 +109,13 @@ get_instance_state() {
         --output text 2>/dev/null || echo "unknown"
 }
 
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/yocto-builder-keypair.pem}"
+
 ssh_cmd() {
     local ip="$1"
     shift
 
-    # Always use EC2 Instance Connect for SSH authentication
-    source "$(dirname "${BASH_SOURCE[0]}")/ec2-instance-connect.sh"
-    local instance_id
-    instance_id=$(get_instance_id)
-    if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
-        log_error "Instance not found"
-        exit 1
-    fi
-    ssh_cmd_ec2_connect "$ip" "$instance_id" "$@"
+    ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "${EC2_USER}@${ip}" "$@"
 }
 
 get_instance_ip_or_exit() {
@@ -144,24 +138,7 @@ rsync_cmd() {
     local ip="$1"
     shift
 
-    # Always use EC2 Instance Connect for rsync authentication
-    source "$(dirname "${BASH_SOURCE[0]}")/ec2-instance-connect.sh"
-    local instance_id
-    instance_id=$(get_instance_id)
-    if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
-        log_error "Instance not found"
-        exit 1
-    fi
-
-    # Get cached or new temporary key
-    local temp_key
-    if ! temp_key=$(setup_temp_ssh_key "$instance_id") || [ -z "$temp_key" ]; then
-        log_error "Failed to send SSH public key via EC2 Instance Connect"
-        return 1
-    fi
-
-    # Use temporary key for rsync
-    rsync -e "ssh -i $temp_key -o StrictHostKeyChecking=no" "$@"
+    rsync -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR" "$@"
 }
 
 yocto_cmd() {

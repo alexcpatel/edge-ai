@@ -164,9 +164,8 @@ ssh_instance() {
 
     shift  # Remove 'ssh' from arguments
     if [ $# -eq 0 ]; then
-        # Interactive SSH session using EC2 Instance Connect
-        source "$(dirname "${BASH_SOURCE[0]}")/lib/ec2-instance-connect.sh"
-        ssh_cmd_ec2_connect "$ip" "$instance_id"
+        # Interactive SSH session
+        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${EC2_USER}@${ip}"
     else
         ssh_cmd "$ip" "$@"
     fi
