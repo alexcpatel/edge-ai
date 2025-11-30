@@ -97,7 +97,7 @@ start_flash() {
     }
 
     TEGRAFLASH_ARCHIVE=$( (controller_ssh "$CONTROLLER" \
-        "find $CURRENT_CONTROLLER_BASE_DIR/tegraflash -maxdepth 1 -name '*.tegraflash.tar.gz' -type f 2>/dev/null | sort -r | head -1" || echo "") | tr -d '\r\n' | xargs)
+        "ls -t $CURRENT_CONTROLLER_BASE_DIR/tegraflash/*.tegraflash.tar.gz 2>/dev/null | head -1" || echo "") | tr -d '\r\n' | xargs)
 
     [ -z "$TEGRAFLASH_ARCHIVE" ] && { log_error "No tegraflash archive. Run: make controller-push-tegraflash"; exit 1; }
 

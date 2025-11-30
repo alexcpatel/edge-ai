@@ -366,7 +366,8 @@
             </div>
             <div class="stop-on-complete" style="margin-top: 8px;">
                 <label>
-                    <input type="checkbox" id="flashUsbFull" onchange="updateFlashUsbFull(this.checked)">
+                    <input type="checkbox" id="flashUsbFull" {{FLASH_USB_FULL_CHECKED}}
+                        onchange="updateFlashUsbFull(this.checked)">
                     Full flash (bootloader + rootfs)
                 </label>
             </div>
@@ -646,7 +647,7 @@
         }
 
         function updateFlashUsbFull(checked) {
-            // Just store the state, will be used when flashStart is called
+            vscode.postMessage({ command: 'toggleFlashUsbFull', value: checked });
         }
 
         function flashUsbWatch() {

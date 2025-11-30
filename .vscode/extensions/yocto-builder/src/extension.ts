@@ -383,6 +383,10 @@ class YoctoBuilderPanel {
                             : 'make firmware-controller-flash-usb C=steamdeck';
                         runCommand(flashCommand, 'Yocto Builder - Flash USB Start');
                         break;
+                    case 'toggleFlashUsbFull':
+                        this._context.globalState.update('flashUsbFull', message.value || false);
+                        this.update();
+                        break;
                     case 'flashUsbWatch':
                         runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash USB Watch');
                         break;
@@ -718,6 +722,10 @@ class YoctoBuilderPanel {
         </div>
         ` : '';
         html = html.replace(/\{\{FLASH_USB_ERRORS\}\}/g, flashUsbErrorsHtml);
+
+        // Flash USB full checkbox state
+        const flashUsbFullChecked = this._context.globalState.get<boolean>('flashUsbFull', false);
+        html = html.replace(/\{\{FLASH_USB_FULL_CHECKED\}\}/g, flashUsbFullChecked ? 'checked' : '');
 
         return html;
     }
