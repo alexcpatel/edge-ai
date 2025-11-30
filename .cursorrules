@@ -1,5 +1,16 @@
-DONT DEFAULT TO ADDING FALLBACKS, WRITE EXACTLY THE CODE TO SOLVE THE PROBLEM
+## Debugging
 
-DONT START WRITING CODE UNTIL YOU HAVE ACTUALLY DIAGNOSED AN ISSUE
+- Diagnose the root cause before writing any code
+- Test fix in ONE file before applying across many
+- No speculative fixes without evidence
 
-DONT MAKE THE SAME CODE CHANGE ACROSS MANY FILES UNTIL YOU HAVE TESTED THAT IT WORKS ON 1 FILE
+## New Code
+
+- Clarify the intention, then implement ONE clear solution
+- No fallbacks, excess error handling, or "just in case" code
+- No inline comments or documentation until the approach is validated
+
+## Always
+
+- No README updates, docstrings, or explanatory comments unless explicitly asked
+- Write clear, readable code—no magic, no code-in-strings, no cryptic awk/regex

@@ -2,111 +2,41 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Push tegraflash archive from EC2 directly to controller
-# This script runs on your laptop and orchestrates pushing the archive to the controller
-# Usage: ./push-tegraflash.sh [controller_name]
-#   Defaults to steamdeck (used for flash-usb operations)
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+source "$REPO_ROOT/firmware/infra/ec2/scripts/lib/common.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+CONTROLLER="${1:-steamdeck}"
+require_controller "$CONTROLLER"
+get_controller_info "$CONTROLLER"
 
-# Save paths before sourcing (which may change directories)
-EC2_INSTANCE_CONNECT="$REPO_ROOT/build/remote/scripts/lib/ec2-instance-connect.sh"
+log_info "Pushing tegraflash from EC2 to $CONTROLLER..."
 
-# Determine which controller to push to
-if [ $# -eq 0 ]; then
-    # Default to steamdeck for flash operations
-    export CONTROLLER_NAME="steamdeck"
-else
-    if [[ "$1" != "raspberrypi" ]] && [[ "$1" != "steamdeck" ]]; then
-        echo "Error: Invalid controller name: $1" >&2
-        echo "Valid controllers: raspberrypi, steamdeck" >&2
-        exit 1
-    fi
-    export CONTROLLER_NAME="$1"
-fi
-
-source "$SCRIPT_DIR/lib/controller-common.sh"
-source "$REPO_ROOT/build/remote/scripts/lib/common.sh"
-
-get_controller_info "$CONTROLLER_NAME"
-
-log_info "Pushing tegraflash archive from EC2 to $CONTROLLER_NAME controller..."
-
-# Get EC2 instance IP
 ip=$(get_instance_ip_or_exit)
 
-# Find tegraflash archive on EC2
-ARTIFACTS_DIR_REMOTE="$YOCTO_DIR/build/tmp/deploy/images/$YOCTO_MACHINE"
+ARTIFACTS_DIR="$YOCTO_DIR/build/tmp/deploy/images/$YOCTO_MACHINE"
+ARCHIVE=$(ssh_cmd "$ip" "find $ARTIFACTS_DIR -maxdepth 1 -name '*.tegraflash.tar.gz' -type f 2>/dev/null | sort -r | head -1" || echo "")
 
-log_info "Looking for tegraflash archive on EC2..."
-TEGRAFLASH_ARCHIVE=$(ssh_cmd "$ip" "find $ARTIFACTS_DIR_REMOTE -maxdepth 1 -name '*.tegraflash.tar.gz' -type f 2>/dev/null | sort -r | head -1" || echo "")
+[ -z "$ARCHIVE" ] && { log_error "No tegraflash archive on EC2. Build first: make build"; exit 1; }
 
-if [ -z "$TEGRAFLASH_ARCHIVE" ]; then
-    log_error "No tegraflash archive found on EC2."
-    log_error "Build an image first: make build-image"
-    exit 1
-fi
+log_info "Found: $(basename "$ARCHIVE")"
 
-ARCHIVE_NAME=$(basename "$TEGRAFLASH_ARCHIVE")
-log_info "Found tegraflash archive: $ARCHIVE_NAME"
+controller_ssh "$CONTROLLER" "mkdir -p $CURRENT_CONTROLLER_BASE_DIR/tegraflash"
 
-# Ensure controller directories exist
-log_info "Setting up directories on controller..."
-controller_cmd "$CONTROLLER_NAME" "mkdir -p $CURRENT_CONTROLLER_BASE_DIR/tegraflash"
+TMP_FILE=$(mktemp)
+trap "rm -f $TMP_FILE" EXIT
 
-# Stream directly from EC2 to controller via laptop (no local staging)
-log_info "Streaming directly from EC2 to controller (via NordVPN Meshnet)..."
-
-# Use rsync to stream from EC2 through laptop to controller
-# This avoids staging the file locally on the laptop
-source "$EC2_INSTANCE_CONNECT"
-instance_id=$(get_instance_id)
-if [ -z "$instance_id" ] || [ "$instance_id" == "None" ]; then
-    log_error "Instance not found"
-    exit 1
-fi
-
-# Get temporary SSH key for EC2
-temp_key=$(setup_temp_ssh_key "$instance_id")
-if [ -z "$temp_key" ]; then
-    log_error "Failed to setup SSH key for EC2"
-    exit 1
-fi
-
-# Stream from EC2 to controller using scp through the laptop
-# Stage temporarily on laptop, then transfer to controller to avoid pipe corruption
-log_info "Downloading from EC2 to controller..."
-TMP_ARCHIVE=$(mktemp)
-trap "rm -f $TMP_ARCHIVE" EXIT
-
-# Download from EC2 to local temp file
 log_info "Downloading from EC2..."
-scp -i "$temp_key" -o StrictHostKeyChecking=no \
-    "${EC2_USER}@${ip}:${TEGRAFLASH_ARCHIVE}" \
-    "$TMP_ARCHIVE"
+scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "${EC2_USER}@${ip}:${ARCHIVE}" "$TMP_FILE"
 
-# Verify local file is valid
-if ! file "$TMP_ARCHIVE" | grep -q "gzip"; then
-    log_error "Downloaded file from EC2 is not a valid gzip archive"
-    file "$TMP_ARCHIVE" || true
-    exit 1
-fi
+file "$TMP_FILE" | grep -q "gzip" || { log_error "Downloaded file is not a valid gzip archive"; exit 1; }
 
-# Transfer to controller using rsync (preserves binary)
-log_info "Transferring to controller..."
-controller_rsync "$CONTROLLER_NAME" "$TMP_ARCHIVE" "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOSTNAME}:$CURRENT_CONTROLLER_BASE_DIR/tegraflash/${ARCHIVE_NAME}"
+log_info "Uploading to controller..."
+controller_rsync "$CONTROLLER" "$TMP_FILE" \
+    "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}:$CURRENT_CONTROLLER_BASE_DIR/tegraflash/$(basename "$ARCHIVE")"
 
-# Verify the file was transferred correctly
-log_info "Verifying archive on controller..."
-if ! controller_cmd "$CONTROLLER_NAME" "file $CURRENT_CONTROLLER_BASE_DIR/tegraflash/${ARCHIVE_NAME} | grep -q 'gzip'"; then
-    log_error "Archive transfer failed - file is not a valid gzip archive"
-    controller_cmd "$CONTROLLER_NAME" "file $CURRENT_CONTROLLER_BASE_DIR/tegraflash/${ARCHIVE_NAME}" || true
-    exit 1
-fi
+controller_ssh "$CONTROLLER" "file $CURRENT_CONTROLLER_BASE_DIR/tegraflash/$(basename "$ARCHIVE") | grep -q 'gzip'" || {
+    log_error "Transfer failed - archive corrupted"; exit 1
+}
 
-# Clean up temp key
-rm -f "$temp_key"
-
-log_success "Tegraflash archive pushed to $CONTROLLER_NAME controller: $CURRENT_CONTROLLER_BASE_DIR/tegraflash/$ARCHIVE_NAME"
-
+log_success "Tegraflash pushed to $CONTROLLER"

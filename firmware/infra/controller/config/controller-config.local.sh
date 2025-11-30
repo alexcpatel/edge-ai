@@ -1,10 +1,11 @@
 #!/bin/bash
-# Controller Configuration - Local Overrides
+# Controller definitions - add your controllers here
+# Format: CONTROLLERS array lists names, then define USER and HOST for each
 
-# Raspberry Pi controller (for serial debug access)
-CONTROLLER_RASPBERRYPI_HOSTNAME="raspberrypi"
-CONTROLLER_RASPBERRYPI_USER="controller"
+CONTROLLERS=(steamdeck raspberrypi)
 
-# Steam Deck controller (for flash-usb operations)
-CONTROLLER_STEAMDECK_HOSTNAME="steamdeck"
-CONTROLLER_STEAMDECK_USER="steamdeck"
+CONTROLLER_steamdeck_USER="steamdeck"
+CONTROLLER_steamdeck_HOST="steamdeck"
+
+CONTROLLER_raspberrypi_USER="controller"
+CONTROLLER_raspberrypi_HOST="raspberrypi"

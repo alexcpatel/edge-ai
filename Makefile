@@ -1,4 +1,4 @@
-.PHONY: build dev sdk help
+.PHONY: build help
 .DEFAULT_GOAL := help
 
 EC2_DIR := firmware/infra/ec2
@@ -65,14 +65,19 @@ clean-package: ## Clean a specific package (usage: make clean-package PACKAGE=sw
 	fi
 	@$(EC2_DIR)/scripts/clean.sh --package $(PACKAGE)
 
-# Controller management (raspberrypi and steamdeck)
-controller-setup: ## Set up controllers remotely (installs packages, creates directories - one-time setup)
-	@$(CONTROLLER_DIR)/scripts/setup-ssh-keys.sh
-	@$(CONTROLLER_DIR)/scripts/setup-controller.sh raspberrypi
-	@$(CONTROLLER_DIR)/scripts/setup-controller.sh steamdeck
+# Controller management (C=controller required)
+controller-list: ## List configured controllers
+	@$(CONTROLLER_DIR)/scripts/controller.sh list
 
-controller-update: ## Update controller scripts (use this after making changes)
-	@$(CONTROLLER_DIR)/scripts/update-controller.sh
+controller-status: ## Show controller status (C=steamdeck)
+	@$(CONTROLLER_DIR)/scripts/controller.sh status $(C)
+
+controller-setup: ## Set up a controller (C=steamdeck)
+	@$(CONTROLLER_DIR)/scripts/controller.sh ssh-keys $(C)
+	@$(CONTROLLER_DIR)/scripts/controller.sh setup $(C)
+
+controller-deploy: ## Deploy scripts to controller (C=steamdeck)
+	@$(CONTROLLER_DIR)/scripts/controller.sh deploy $(C)
 
 # Controller Jetson flashing
 controller-push-tegraflash: ## Push tegraflash archive from EC2 to controller

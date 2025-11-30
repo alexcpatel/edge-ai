@@ -2,193 +2,45 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Flash Jetson device via USB from Steam Deck controller
-# This script runs on your laptop and executes flashing on the controller
-# Usage: flash-usb.sh [--full]
-#   --full: Flash full image (bootloader + rootfs), default is --spi-only (bootloader only)
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Parse arguments
 FLASH_MODE="spi-only"
-if [ $# -gt 0 ] && [ "$1" = "--full" ]; then
-    FLASH_MODE="full"
-fi
+[ "${1:-}" = "--full" ] && FLASH_MODE="full"
 
-# Save absolute paths before sourcing (which may change SCRIPT_DIR)
-FLASH_SCRIPT_LOCAL="$(cd "$SCRIPT_DIR" && pwd)/on-controller/flash-device.sh"
+CONTROLLER="${CONTROLLER:-steamdeck}"
+require_controller "$CONTROLLER"
+get_controller_info "$CONTROLLER"
 
-# Use steamdeck controller for flash operations
-export CONTROLLER_NAME="steamdeck"
+log_info "=== USB Flash Setup ==="
+[ "$FLASH_MODE" = "full" ] && log_info "Mode: FULL (bootloader + rootfs)" \
+    || log_info "Mode: SPI-only (bootloader). Use --full for complete flash."
+echo ""
+log_info "1. Connect Jetson to controller via USB-C"
+log_info "2. Put Jetson in recovery mode (short FC_REC to GND, then power on)"
+log_info "3. Verify: lsusb | grep -i nvidia"
+echo ""
+read -p "Press Enter when ready, Ctrl+C to cancel..."
 
-source "$SCRIPT_DIR/lib/controller-common.sh"
+check_controller_connection "$CONTROLLER"
 
-log_info ""
-log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-log_info "${BOLD}  PRE-FLASHING SETUP - Follow these steps carefully${NC}"
-log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-log_info ""
-if [ "$FLASH_MODE" = "full" ]; then
-    log_info "${YELLOW}NOTE: This will flash the FULL image (bootloader + rootfs).${NC}"
-    log_info "${YELLOW}This will take significantly longer than SPI-only flash.${NC}"
-else
-    log_info "${YELLOW}NOTE: This will only flash the bootloader to SPI flash.${NC}"
-    log_info "${YELLOW}You will need to flash the SD card separately using dosdcard.sh${NC}"
-    log_info "${YELLOW}Use --full flag for full image flash: make controller-flash-usb FULL=--full${NC}"
-fi
-log_info ""
-log_step "1. Connect the Jetson device to Steam Deck via USB-C cable"
-log_info "   - Use the USB-C port on the Jetson board"
-log_info "   - Connect to a USB port on the Steam Deck"
-log_info ""
-log_step "2. Put the Jetson device into Forced Recovery Mode:"
-log_info "   - Power off the device completely (unplug power adapter)"
-log_info "   - Locate the J14 header on the Jetson board"
-log_info "   - Find the 'FC_REC' pin and the 'GND' pin on the J14 header"
-log_info "   - Short (connect) the FC_REC pin to the GND pin using a jumper wire"
-log_info "   - Keep the jumper in place - do not remove it yet"
-log_info ""
-log_step "3. Power on the device while in recovery mode:"
-log_info "   - With the FC_REC to GND jumper still in place, connect the power adapter"
-log_info "   - The device should power on and enter recovery mode"
-log_info ""
-log_step "4. Verify the device is detected on Steam Deck:"
-log_info "   - The device should appear as an NVIDIA USB device"
-log_info "   - Run this command on the Steam Deck to check:"
-log_info "     lsusb | grep -i nvidia"
-log_info "   - You should see 'NVIDIA Corp.' or 'APX' in the output"
-log_info ""
-log_info "${YELLOW}When you have completed all the steps above, press Enter to continue...${NC}"
-read -p "Press Enter to proceed with flashing, or Ctrl+C to cancel..."
+TEGRAFLASH_ARCHIVE=$(controller_ssh "$CONTROLLER" \
+    "find $CURRENT_CONTROLLER_BASE_DIR/tegraflash -maxdepth 1 -name '*.tegraflash.tar.gz' -type f 2>/dev/null | sort -r | head -1" || echo "")
 
-# Check if controller is set up and has required packages
-log_step "Checking controller setup..."
-get_controller_info "steamdeck"
+[ -z "$TEGRAFLASH_ARCHIVE" ] && { log_error "No tegraflash archive. Run: make controller-push-tegraflash"; exit 1; }
 
-# Check if required packages are installed (check a few key ones)
-KEY_PACKAGES=("device-tree-compiler" "python3" "python3-yaml" "gdisk" "zstd")
-MISSING_COUNT=0
-for pkg in "${KEY_PACKAGES[@]}"; do
-    if ! controller_cmd "steamdeck" "dpkg -l | grep -q \"^ii.*$pkg \" 2>/dev/null" 2>/dev/null; then
-        MISSING_COUNT=$((MISSING_COUNT + 1))
-    fi
-done
+log_info "Using: $(basename "$TEGRAFLASH_ARCHIVE")"
 
-# Also check for i386 architecture support
-if ! controller_cmd "steamdeck" "dpkg --print-foreign-architectures | grep -q i386 2>/dev/null" 2>/dev/null; then
-    MISSING_COUNT=$((MISSING_COUNT + 1))
-fi
+local_script="$SCRIPT_DIR/on-controller/flash-device.sh"
+remote_script="$CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller/flash-device.sh"
 
-if [ $MISSING_COUNT -gt 0 ]; then
-    log_info "Controller missing required packages. Setting up controller..."
-    SETUP_SCRIPT_LOCAL="$(cd "$SCRIPT_DIR" && pwd)/on-controller/setup.sh"
-    SETUP_SCRIPT_REMOTE="/tmp/setup-controller-$$.sh"
+controller_ssh "$CONTROLLER" "mkdir -p $CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller"
+controller_rsync "$CONTROLLER" "$local_script" "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}:$remote_script"
+controller_ssh "$CONTROLLER" "chmod +x $remote_script"
 
-    # Copy and run setup script
-    controller_rsync "steamdeck" "$SETUP_SCRIPT_LOCAL" "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOSTNAME}:${SETUP_SCRIPT_REMOTE}"
-    controller_cmd "steamdeck" "bash $SETUP_SCRIPT_REMOTE"
-    controller_cmd "steamdeck" "rm -f $SETUP_SCRIPT_REMOTE"
+log_info "Starting flash..."
+controller_ssh "$CONTROLLER" "bash $remote_script '$TEGRAFLASH_ARCHIVE' '$FLASH_MODE'"
 
-    log_success "Controller setup complete"
-else
-    log_success "Controller is properly set up"
-fi
-
-# Check if tegraflash archive exists on controller
-log_info "Checking for tegraflash archive on controller..."
-get_controller_info "steamdeck"
-TEGRAFLASH_ARCHIVE=$(controller_cmd "steamdeck" "find $CURRENT_CONTROLLER_BASE_DIR/tegraflash -maxdepth 1 -name '*.tegraflash.tar.gz' -type f 2>/dev/null | sort -r | head -1" || echo "")
-
-if [ -z "$TEGRAFLASH_ARCHIVE" ]; then
-    log_error "Tegraflash archive not found on controller."
-    log_info "Push it first: make controller-push-tegraflash"
-    exit 1
-fi
-
-ARCHIVE_NAME=$(basename "$TEGRAFLASH_ARCHIVE")
-log_info "Using tegraflash archive: $ARCHIVE_NAME"
-
-# Flash command and description
-if [ "$FLASH_MODE" = "full" ]; then
-    FLASH_CMD="./doflash.sh"
-    log_info "Flashing FULL image (bootloader + rootfs)"
-    log_info "This will:"
-    log_info "  - Update the bootloader in SPI flash (QSPI-NOR)"
-    log_info "  - Flash the root filesystem to eMMC/SD"
-    log_info ""
-    log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    log_info "${BOLD}  STARTING FULL FLASH PROCESS${NC}"
-    log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    log_info ""
-    log_info "This will take approximately 30-60 minutes (full image flash)..."
-else
-    FLASH_CMD="./doflash.sh --spi-only"
-    log_info "Flashing bootloader to SPI flash only (--spi-only)"
-    log_info "This will:"
-    log_info "  - Update the bootloader in SPI flash (QSPI-NOR)"
-    log_info "  - NOT flash the root filesystem (flash SD card separately)"
-    log_info ""
-    log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    log_info "${BOLD}  STARTING FLASH PROCESS${NC}"
-    log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-    log_info ""
-    log_info "This should take approximately 15 minutes (much faster than full flash)..."
-fi
-log_info ""
-
-# Deploy flash script to controller if needed
-get_controller_info "steamdeck"
-FLASH_SCRIPT_REMOTE="$CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller/flash-device.sh"
-
-# Verify script exists
-if [ ! -f "$FLASH_SCRIPT_LOCAL" ]; then
-    log_error "Flash script not found: $FLASH_SCRIPT_LOCAL"
-    exit 1
-fi
-
-log_step "Deploying flash script to controller..."
-controller_cmd "steamdeck" "mkdir -p $CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller"
-controller_rsync "steamdeck" "$FLASH_SCRIPT_LOCAL" "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOSTNAME}:$FLASH_SCRIPT_REMOTE"
-controller_cmd "steamdeck" "chmod +x $FLASH_SCRIPT_REMOTE"
-
-# Execute flashing on controller
-log_step "Executing flash on controller..."
-log_info "Archive path: $TEGRAFLASH_ARCHIVE"
-log_info "Flash mode: $FLASH_MODE"
-controller_cmd "steamdeck" "bash $FLASH_SCRIPT_REMOTE '$TEGRAFLASH_ARCHIVE' '$FLASH_MODE'"
-
-log_info ""
-log_success "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-log_success "${BOLD}  FLASH COMPLETED SUCCESSFULLY!${NC}"
-log_success "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-log_info ""
-log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-log_info "${BOLD}  POST-FLASHING SETUP - Next Steps${NC}"
-log_info "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-log_info ""
-if [ "$FLASH_MODE" = "full" ]; then
-    log_step "1. Full flash complete!"
-    log_info "   - The bootloader has been flashed to SPI flash"
-    log_info "   - The root filesystem has been flashed to eMMC/SD"
-    log_info ""
-    log_step "2. Next steps:"
-    log_info "   - Remove the recovery mode jumper (FC_REC to GND)"
-    log_info "   - Connect peripherals (monitor, keyboard, etc.)"
-    log_info "   - Power on the device"
-    log_info "   - The device should boot from the flashed image"
-else
-    log_step "1. Bootloader flash complete!"
-    log_info "   - The bootloader has been flashed to SPI flash"
-    log_info ""
-    log_step "2. Next: Flash the SD card separately"
-    log_info "   - Use dosdcard.sh to create and flash the SD card image"
-    log_info "   - The SD card contains the root filesystem"
-    log_info ""
-    log_step "3. After SD card is flashed:"
-    log_info "   - Remove the recovery mode jumper (FC_REC to GND)"
-    log_info "   - Insert the flashed SD card into the Jetson board"
-    log_info "   - Connect peripherals (monitor, keyboard, etc.)"
-    log_info "   - Power on the device"
-fi
-log_info ""
-
+log_success "Flash complete!"
+echo ""
+[ "$FLASH_MODE" = "full" ] && log_info "Remove recovery jumper and power on." \
+    || log_info "Flash SD card next, then remove jumper and insert card."

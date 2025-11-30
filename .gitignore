@@ -1,32 +1,5 @@
-# AWS credentials
-.aws/
-*.pem
 
-# SSH keys
-*.key
-id_rsa
-id_rsa.pub
-
-# Build artifacts
-*.wic
-*.img
-*.ext4
-
-# SDK (can be regenerated)
-sdk/*.sh
-sdk/*.tar.bz2
-sdk/*/
-
-# Temporary files
-*.tmp
-*.log
-*.swp
-*~
-
-# OS files
 .DS_Store
+**/.DS_Store
 Thumbs.db
-
-# Local config (may contain secrets)
-build/infrastructure/config/
-build/controller/config/controller-config.local.sh
+**/.Thumbs.db
