@@ -77,6 +77,20 @@ interface BuildStatus {
     warning?: string;
 }
 
+interface ControllerStatus {
+    name: string;
+    host: string;
+    reachable: boolean;
+}
+
+interface FlashStatus {
+    running: boolean;
+    elapsed?: string;
+    elapsedSeconds?: number; // Total seconds for client-side incrementing
+    lastLogLines?: string[];
+    errors?: string[];
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Yocto Builder');
     outputChannel.appendLine('Yocto Builder extension activated');
@@ -124,6 +138,18 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand('yocto-builder.buildTerminate', () => {
                 outputChannel.appendLine('Command: buildTerminate');
                 runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
+            }),
+            vscode.commands.registerCommand('yocto-builder.flashStart', () => {
+                outputChannel.appendLine('Command: flashStart');
+                runCommand('make firmware-controller-flash-usb C=steamdeck FULL=--full', 'Yocto Builder - Flash Start');
+            }),
+            vscode.commands.registerCommand('yocto-builder.flashWatch', () => {
+                outputChannel.appendLine('Command: flashWatch');
+                runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash Watch');
+            }),
+            vscode.commands.registerCommand('yocto-builder.flashTerminate', () => {
+                outputChannel.appendLine('Command: flashTerminate');
+                runCommand('make firmware-controller-flash-usb-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
             }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
@@ -338,6 +364,15 @@ class YoctoBuilderPanel {
                     case 'buildTerminate':
                         runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
                         break;
+                    case 'flashStart':
+                        runCommand('make firmware-controller-flash-usb C=steamdeck FULL=--full', 'Yocto Builder - Flash Start');
+                        break;
+                    case 'flashWatch':
+                        runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash Watch');
+                        break;
+                    case 'flashTerminate':
+                        runCommand('make firmware-controller-flash-usb-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
+                        break;
                     case 'toggleStopOnComplete':
                         // Store preference locally (works even when instance is not running)
                         this._context.globalState.update('autoStopOnBuildComplete', message.value || false);
@@ -451,9 +486,11 @@ class YoctoBuilderPanel {
         }
 
         // Run status checks in parallel to reduce delay
-        const [instanceStatus, buildStatus] = await Promise.all([
+        const [instanceStatus, buildStatus, controllerStatus, flashStatus] = await Promise.all([
             this.getInstanceStatus(workspaceFolder.uri.fsPath),
-            this.getBuildStatus(workspaceFolder.uri.fsPath)
+            this.getBuildStatus(workspaceFolder.uri.fsPath),
+            this.getControllerStatus(workspaceFolder.uri.fsPath),
+            this.getFlashStatus(workspaceFolder.uri.fsPath)
         ]);
 
         // Read HTML template
@@ -573,6 +610,50 @@ class YoctoBuilderPanel {
         </div>
         ` : '';
         html = html.replace(/\{\{BUILD_ERRORS\}\}/g, errorsHtml);
+
+        // Controller status section
+        html = html.replace(/\{\{CONTROLLER_STATUS_CLASS\}\}/g, controllerStatus.reachable ? 'running' : 'stopped');
+        html = html.replace(/\{\{CONTROLLER_NAME\}\}/g, this.escapeHtml(controllerStatus.name || 'N/A'));
+        html = html.replace(/\{\{CONTROLLER_HOST\}\}/g, this.escapeHtml(controllerStatus.host || 'N/A'));
+        html = html.replace(/\{\{CONTROLLER_STATUS_TEXT\}\}/g, controllerStatus.reachable ? 'Reachable' : 'Unreachable');
+
+        // Flash status section
+        html = html.replace(/\{\{FLASH_STATUS_CLASS\}\}/g, flashStatus.running ? 'running' : 'stopped');
+        html = html.replace(/\{\{FLASH_STATUS_TEXT\}\}/g, flashStatus.running ? 'Running' : 'Not Running');
+        html = html.replace(/\{\{FLASH_START_DISABLED\}\}/g, flashStatus.running ? 'disabled' : '');
+        html = html.replace(/\{\{FLASH_WATCH_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
+        html = html.replace(/\{\{FLASH_TERMINATE_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
+
+        // Flash elapsed time section
+        const flashElapsedHtml = flashStatus.elapsed ? `
+        <div class="info-row">
+            <span class="info-label">Elapsed:</span>
+            <span id="flashElapsedTime" data-elapsed-seconds="${flashStatus.elapsedSeconds || 0}" data-is-running="${flashStatus.running}">${flashStatus.elapsed}</span>
+        </div>
+        ` : '';
+        html = html.replace(/\{\{FLASH_ELAPSED_TIME\}\}/g, flashElapsedHtml);
+
+        // Flash last log lines section
+        const flashLogHtml = flashStatus.lastLogLines && flashStatus.lastLogLines.length > 0 ? `
+        <div class="info-row">
+            <span class="info-label">Last log:</span>
+        </div>
+        <div class="error-code-window">
+            <pre><code>${flashStatus.lastLogLines.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
+        </div>
+        ` : '';
+        html = html.replace(/\{\{FLASH_LAST_LOG\}\}/g, flashLogHtml);
+
+        // Flash errors section
+        const flashErrorsHtml = flashStatus.errors && flashStatus.errors.length > 0 ? `
+        <div class="error">
+            <strong>Errors:</strong>
+            <div class="error-code-window">
+                <pre><code>${flashStatus.errors.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
+            </div>
+        </div>
+        ` : '';
+        html = html.replace(/\{\{FLASH_ERRORS\}\}/g, flashErrorsHtml);
 
         return html;
     }
@@ -739,6 +820,103 @@ class YoctoBuilderPanel {
         return status;
     }
 
+    private async getControllerStatus(workspacePath: string): Promise<ControllerStatus> {
+        try {
+            const { stdout } = await execWithTimeout('make firmware-controller-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
+            return this.parseControllerStatusOutput(stdout);
+        } catch (error: any) {
+            if (error?.stdout) {
+                return this.parseControllerStatusOutput(error.stdout);
+            }
+            return { name: 'steamdeck', host: 'N/A', reachable: false };
+        }
+    }
+
+    private parseControllerStatusOutput(stdout: string): ControllerStatus {
+        const lines = stdout.split('\n');
+        const status: ControllerStatus = {
+            name: 'steamdeck',
+            host: 'N/A',
+            reachable: false
+        };
+
+        for (const line of lines) {
+            if (line.includes('Controller:')) {
+                status.name = line.split('Controller:')[1]?.trim() || 'steamdeck';
+            } else if (line.includes('Host:')) {
+                status.host = line.split('Host:')[1]?.trim() || 'N/A';
+            } else if (line.includes('Status: reachable')) {
+                status.reachable = true;
+            } else if (line.includes('Status: unreachable')) {
+                status.reachable = false;
+            }
+        }
+
+        return status;
+    }
+
+    private async getFlashStatus(workspacePath: string): Promise<FlashStatus> {
+        try {
+            const { stdout } = await execWithTimeout('make firmware-controller-flash-usb-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
+            return this.parseFlashStatusOutput(stdout);
+        } catch (error: any) {
+            if (error?.stdout) {
+                return this.parseFlashStatusOutput(error.stdout);
+            }
+            return { running: false };
+        }
+    }
+
+    private parseFlashStatusOutput(stdout: string): FlashStatus {
+        const lines = stdout.split('\n');
+        const status: FlashStatus = {
+            running: stdout.includes('Flash session is running'),
+            errors: []
+        };
+
+        // Extract elapsed time if available
+        const elapsedMatch = stdout.match(/Elapsed: (.+)/);
+        if (elapsedMatch) {
+            status.elapsed = elapsedMatch[1].trim();
+            status.elapsedSeconds = this.parseElapsedTimeToSeconds(elapsedMatch[1].trim());
+        }
+
+        // Extract last log lines (usually after "Last log output:" or at the end)
+        const logStartIndex = stdout.indexOf('Last log output:');
+        if (logStartIndex !== -1) {
+            const logSection = stdout.substring(logStartIndex + 'Last log output:'.length);
+            const logLines = logSection.split('\n')
+                .map(line => line.trim())
+                .filter(line => line && !line.includes('==='))
+                .slice(0, 10);
+            if (logLines.length > 0) {
+                status.lastLogLines = logLines;
+            }
+        } else if (status.running) {
+            // If running, get last few lines from the output
+            const lastLines = lines
+                .filter(line => line.trim() && !line.includes('Flash session is running') && !line.includes('Elapsed:'))
+                .slice(-5);
+            if (lastLines.length > 0) {
+                status.lastLogLines = lastLines.map(line => line.trim());
+            }
+        }
+
+        // Extract errors if any
+        if (!status.running) {
+            const errorLines = lines
+                .filter(line => {
+                    const lower = line.toLowerCase();
+                    return lower.includes('error') || lower.includes('failed') || lower.includes('fatal');
+                })
+                .slice(0, 5);
+            if (errorLines.length > 0) {
+                status.errors = errorLines.map(line => line.trim());
+            }
+        }
+
+        return status;
+    }
 
     public dispose() {
         YoctoBuilderPanel.currentPanel = undefined;

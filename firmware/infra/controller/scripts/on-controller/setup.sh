@@ -13,8 +13,19 @@ echo "Setting up controller ($(hostname))..."
 
 mkdir -p "$CONTROLLER_BASE_DIR/tegraflash"
 
+USERNAME=$(whoami)
+SUDOERS_FILE="/etc/sudoers.d/edge-ai-$USERNAME"
+if ! sudo -n true 2>/dev/null; then
+    echo "Configuring passwordless sudo for $USERNAME..."
+    echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" | sudo tee "$SUDOERS_FILE" > /dev/null
+    sudo chmod 0440 "$SUDOERS_FILE"
+    echo "Passwordless sudo configured"
+else
+    echo "Passwordless sudo already configured"
+fi
+
 if [ "$IS_STEAMDECK" = true ]; then
-    PACKAGES=(device-tree-compiler python3 python3-yaml usbutils rsync file libc6-i386 zstd gdisk)
+    PACKAGES=(device-tree-compiler python3 python3-yaml usbutils rsync file libc6-i386 zstd gdisk tmux)
     MISSING=()
     for pkg in "${PACKAGES[@]}"; do
         dpkg -l | grep -q "^ii.*$pkg " 2>/dev/null || MISSING+=("$pkg")

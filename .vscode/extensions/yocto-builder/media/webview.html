@@ -293,7 +293,7 @@
 
     <div class="container">
         <div class="section">
-            <h2>Instance Status</h2>
+            <h2>EC2 Instance Status</h2>
             <div class="status">
                 <div class="status-indicator {{INSTANCE_STATUS_CLASS}}"></div>
                 <span><strong>State:</strong> {{INSTANCE_STATE}}</span>
@@ -337,6 +337,34 @@
             </div>
             {{STOP_ON_COMPLETE}}
         </div>
+
+        <div class="section">
+            <h2>Flash Status</h2>
+            <div class="status">
+                <div class="status-indicator {{CONTROLLER_STATUS_CLASS}}"></div>
+                <span><strong>Controller:</strong> {{CONTROLLER_NAME}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Host:</span>
+                <span>{{CONTROLLER_HOST}}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Status:</span>
+                <span>{{CONTROLLER_STATUS_TEXT}}</span>
+            </div>
+            <div class="status" style="margin-top: 8px;">
+                <div class="status-indicator {{FLASH_STATUS_CLASS}}"></div>
+                <span><strong>Flash:</strong> {{FLASH_STATUS_TEXT}}</span>
+            </div>
+            {{FLASH_ELAPSED_TIME}}
+            {{FLASH_LAST_LOG}}
+            {{FLASH_ERRORS}}
+            <div class="button-group">
+                <button onclick="flashStart()" {{FLASH_START_DISABLED}}>Start</button>
+                <button onclick="flashWatch()" {{FLASH_WATCH_DISABLED}}>Watch</button>
+                <button onclick="flashTerminate()" {{FLASH_TERMINATE_DISABLED}}>Terminate</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -345,6 +373,9 @@
         let elapsedTimeInterval = null;
         let lastElapsedSeconds = 0;
         let lastUpdateTime = Date.now();
+        let flashElapsedTimeInterval = null;
+        let lastFlashElapsedSeconds = 0;
+        let lastFlashUpdateTime = Date.now();
 
         // Format seconds into readable time string
         function formatElapsedTime(seconds) {
@@ -387,6 +418,31 @@
             elapsedElement.textContent = formatElapsedTime(currentElapsedSeconds);
         }
 
+        // Update flash elapsed time display
+        function updateFlashElapsedTime() {
+            const elapsedElement = document.getElementById('flashElapsedTime');
+            if (!elapsedElement) {
+                return;
+            }
+
+            const isRunning = elapsedElement.getAttribute('data-is-running') === 'true';
+            if (!isRunning) {
+                // Flash not running, stop updating
+                if (flashElapsedTimeInterval) {
+                    clearInterval(flashElapsedTimeInterval);
+                    flashElapsedTimeInterval = null;
+                }
+                return;
+            }
+
+            // Calculate elapsed time based on last known value + time since last update
+            const now = Date.now();
+            const timeDiff = Math.floor((now - lastFlashUpdateTime) / 1000);
+            const currentElapsedSeconds = lastFlashElapsedSeconds + timeDiff;
+
+            elapsedElement.textContent = formatElapsedTime(currentElapsedSeconds);
+        }
+
         // Start/update elapsed time tracking
         function startElapsedTimeTracking() {
             const elapsedElement = document.getElementById('elapsedTime');
@@ -411,6 +467,33 @@
             if (isRunning) {
                 updateElapsedTime(); // Update immediately
                 elapsedTimeInterval = setInterval(updateElapsedTime, 1000);
+            }
+        }
+
+        // Start/update flash elapsed time tracking
+        function startFlashElapsedTimeTracking() {
+            const elapsedElement = document.getElementById('flashElapsedTime');
+            if (!elapsedElement) {
+                return;
+            }
+
+            const elapsedSecondsAttr = elapsedElement.getAttribute('data-elapsed-seconds');
+            const isRunning = elapsedElement.getAttribute('data-is-running') === 'true';
+
+            if (elapsedSecondsAttr !== null) {
+                lastFlashElapsedSeconds = parseInt(elapsedSecondsAttr, 10) || 0;
+                lastFlashUpdateTime = Date.now();
+            }
+
+            // Clear existing interval
+            if (flashElapsedTimeInterval) {
+                clearInterval(flashElapsedTimeInterval);
+            }
+
+            // Start updating every second if flash is running
+            if (isRunning) {
+                updateFlashElapsedTime(); // Update immediately
+                flashElapsedTimeInterval = setInterval(updateFlashElapsedTime, 1000);
             }
         }
 
@@ -450,6 +533,7 @@
         setTimeout(() => {
             showRefreshAnimation();
             startElapsedTimeTracking();
+            startFlashElapsedTimeTracking();
             initProgressBar();
         }, 50);
 
@@ -487,6 +571,18 @@
 
         function buildTerminate() {
             vscode.postMessage({ command: 'buildTerminate' });
+        }
+
+        function flashStart() {
+            vscode.postMessage({ command: 'flashStart' });
+        }
+
+        function flashWatch() {
+            vscode.postMessage({ command: 'flashWatch' });
+        }
+
+        function flashTerminate() {
+            vscode.postMessage({ command: 'flashTerminate' });
         }
     </script>
 </body>

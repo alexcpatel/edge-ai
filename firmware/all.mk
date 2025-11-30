@@ -78,8 +78,17 @@ firmware-controller-deploy: ## Deploy scripts to controller (C=steamdeck)
 firmware-controller-push-tegraflash: ## Push tegraflash archive from EC2 to controller
 	@$(CONTROLLER_DIR)/scripts/push-tegraflash.sh
 
-firmware-controller-flash-usb: ## Flash Jetson via USB from controller (use FULL=--full for full image flash)
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh $(FULL)
+firmware-controller-flash-usb: firmware-controller-deploy ## Flash Jetson via USB from controller (use FULL=--full for full image flash)
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh start $(FULL)
 
-firmware-controller-flash-sdcard: ## Flash SD card from controller
+firmware-controller-flash-usb-status: ## Check if USB flash session is running
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh status
+
+firmware-controller-flash-usb-watch: ## Tail USB flash log (allows scrolling in local terminal)
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh watch
+
+firmware-controller-flash-usb-terminate: ## Terminate running USB flash session
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh terminate
+
+firmware-controller-flash-sdcard: firmware-controller-deploy ## Flash SD card from controller
 	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh "$(DEVICE)"

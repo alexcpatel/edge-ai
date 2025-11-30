@@ -45,7 +45,7 @@ check_controller_connection() {
 controller_ssh() {
     local name="$1"; shift
     get_controller_info "$name"
-    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+    ssh -t -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
         "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}" "$@"
 }
 

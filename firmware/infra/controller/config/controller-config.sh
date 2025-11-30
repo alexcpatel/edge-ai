@@ -1,7 +1,7 @@
 #!/bin/bash
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "$SCRIPT_DIR/controller-config.local.sh" ] && source "$SCRIPT_DIR/controller-config.local.sh"
+CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "$CONFIG_DIR/controller-config.local.sh" ] && source "$CONFIG_DIR/controller-config.local.sh"
 
 CONTROLLERS=("${CONTROLLERS[@]:-}")
 

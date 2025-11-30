@@ -5,6 +5,7 @@ IFS=$'\n\t'
 CONTROLLER_BASE_DIR="${CONTROLLER_BASE_DIR:-$HOME/edge-ai-controller}"
 ARCHIVE_PATH="$1"
 FLASH_MODE="${2:-spi-only}"
+LOG_FILE="${LOG_FILE:-/tmp/usb-flash.log}"
 
 [ -z "$ARCHIVE_PATH" ] && { echo "Usage: $0 <archive> [spi-only|full]"; exit 1; }
 [ ! -f "$ARCHIVE_PATH" ] && { echo "Archive not found: $ARCHIVE_PATH"; exit 1; }
@@ -29,10 +30,25 @@ fi
 
 cd "$EXTRACT_DIR"
 
+[ -f "./doflash.sh" ] || { echo "doflash.sh not found in $EXTRACT_DIR"; exit 1; }
+
 lsusb | grep -qi nvidia && echo "NVIDIA device detected" \
     || echo "WARNING: No NVIDIA USB device. Ensure device is in recovery mode."
 
-[ "$FLASH_MODE" = "full" ] && CMD="./doflash.sh" || CMD="./doflash.sh --spi-only"
+if [ "$FLASH_MODE" = "full" ]; then
+    CMD="./doflash.sh"
+else
+    CMD="./doflash.sh"
+    ARGS="--spi-only"
+fi
 
 echo "Flashing ($FLASH_MODE)..."
-[ "$EUID" -ne 0 ] && sudo "$CMD" || $CMD
+if [ "$EUID" -ne 0 ]; then
+    sudo "$CMD" "${ARGS:-}" 2>&1 | tee "$LOG_FILE"
+    FLASH_EXIT="${PIPESTATUS[0]}"
+else
+    "$CMD" "${ARGS:-}" 2>&1 | tee "$LOG_FILE"
+    FLASH_EXIT="${PIPESTATUS[0]}"
+fi
+
+exit "$FLASH_EXIT"
