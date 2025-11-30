@@ -5,6 +5,9 @@ IFS=$'\n\t'
 CONTROLLER_BASE_DIR="${CONTROLLER_BASE_DIR:-$HOME/edge-ai-controller}"
 ARCHIVE_PATH="$1"
 SD_DEVICE="${2:-}"
+LOG_FILE="${LOG_FILE:-/tmp/sdcard-flash.log}"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 [ -z "$ARCHIVE_PATH" ] && { echo "Usage: $0 <archive> [device]"; exit 1; }
 [ ! -f "$ARCHIVE_PATH" ] && { echo "Archive not found: $ARCHIVE_PATH"; exit 1; }
@@ -28,10 +31,10 @@ fi
 
 cd "$EXTRACT_DIR"
 
-if [ -z "$SD_DEVICE" ]; then
-    echo "Available devices:"
-    lsblk -d -o NAME,SIZE,TYPE,MODEL | grep -E "^(NAME|sd|mmc|nvme)" || true
-    read -p "Device (e.g. /dev/sdb): " SD_DEVICE
+[ -z "$SD_DEVICE" ] && { echo "Error: Device is required"; exit 1; }
+
+if [ "$SD_DEVICE" = "${SD_DEVICE#/dev/}" ]; then
+    SD_DEVICE="/dev/$SD_DEVICE"
 fi
 
 [ -b "$SD_DEVICE" ] || { echo "Device not found: $SD_DEVICE"; exit 1; }
@@ -39,11 +42,24 @@ fi
 echo "Target: $SD_DEVICE"
 lsblk "$SD_DEVICE" || true
 echo "WARNING: This will erase all data on $SD_DEVICE"
-read -p "Press Enter to continue, Ctrl+C to cancel..."
+echo "Proceeding with flash..."
 
 sudo umount "${SD_DEVICE}"* 2>/dev/null || true
 
 echo "Flashing SD card..."
-[ "$EUID" -ne 0 ] && sudo ./dosdcard.sh "$SD_DEVICE" || ./dosdcard.sh "$SD_DEVICE"
+FLASH_EXIT=0
+if [ "$EUID" -ne 0 ]; then
+    yes | sudo ./dosdcard.sh "$SD_DEVICE" 2>&1 | tee -a "$LOG_FILE"
+    FLASH_EXIT="${PIPESTATUS[0]}"
+else
+    yes | ./dosdcard.sh "$SD_DEVICE" 2>&1 | tee -a "$LOG_FILE"
+    FLASH_EXIT="${PIPESTATUS[0]}"
+fi
 
-echo "SD card flash complete"
+if [ "$FLASH_EXIT" -eq 0 ]; then
+    echo "SD card flash complete"
+else
+    echo "SD card flash failed with exit code $FLASH_EXIT"
+fi
+
+exit "$FLASH_EXIT"

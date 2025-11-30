@@ -352,17 +352,20 @@
                 <span class="info-label">Status:</span>
                 <span>{{CONTROLLER_STATUS_TEXT}}</span>
             </div>
-            <div class="status" style="margin-top: 8px;">
-                <div class="status-indicator {{FLASH_STATUS_CLASS}}"></div>
-                <span><strong>Flash:</strong> {{FLASH_STATUS_TEXT}}</span>
+            <div class="button-group" style="margin-top: 8px;">
+                <button onclick="flashStart()">Flash Bootloader (USB)</button>
             </div>
-            {{FLASH_ELAPSED_TIME}}
-            {{FLASH_LAST_LOG}}
-            {{FLASH_ERRORS}}
+            <div class="status" style="margin-top: 12px;">
+                <div class="status-indicator {{FLASH_SDCARD_STATUS_CLASS}}"></div>
+                <span><strong>SD Card Flash:</strong> {{FLASH_SDCARD_STATUS_TEXT}}</span>
+            </div>
+            {{FLASH_SDCARD_ELAPSED_TIME}}
+            {{FLASH_SDCARD_LAST_LOG}}
+            {{FLASH_SDCARD_ERRORS}}
             <div class="button-group">
-                <button onclick="flashStart()" {{FLASH_START_DISABLED}}>Start</button>
-                <button onclick="flashWatch()" {{FLASH_WATCH_DISABLED}}>Watch</button>
-                <button onclick="flashTerminate()" {{FLASH_TERMINATE_DISABLED}}>Terminate</button>
+                <button onclick="flashSdcardStart()" {{FLASH_SDCARD_START_DISABLED}}>Start SD Card</button>
+                <button onclick="flashSdcardWatch()" {{FLASH_SDCARD_WATCH_DISABLED}}>Watch</button>
+                <button onclick="flashSdcardTerminate()" {{FLASH_SDCARD_TERMINATE_DISABLED}}>Terminate</button>
             </div>
         </div>
     </div>
@@ -373,9 +376,9 @@
         let elapsedTimeInterval = null;
         let lastElapsedSeconds = 0;
         let lastUpdateTime = Date.now();
-        let flashElapsedTimeInterval = null;
-        let lastFlashElapsedSeconds = 0;
-        let lastFlashUpdateTime = Date.now();
+        let flashSdcardElapsedTimeInterval = null;
+        let lastFlashSdcardElapsedSeconds = 0;
+        let lastFlashSdcardUpdateTime = Date.now();
 
         // Format seconds into readable time string
         function formatElapsedTime(seconds) {
@@ -418,27 +421,25 @@
             elapsedElement.textContent = formatElapsedTime(currentElapsedSeconds);
         }
 
-        // Update flash elapsed time display
-        function updateFlashElapsedTime() {
-            const elapsedElement = document.getElementById('flashElapsedTime');
+        // Update flash SD card elapsed time display
+        function updateFlashSdcardElapsedTime() {
+            const elapsedElement = document.getElementById('flashSdcardElapsedTime');
             if (!elapsedElement) {
                 return;
             }
 
             const isRunning = elapsedElement.getAttribute('data-is-running') === 'true';
             if (!isRunning) {
-                // Flash not running, stop updating
-                if (flashElapsedTimeInterval) {
-                    clearInterval(flashElapsedTimeInterval);
-                    flashElapsedTimeInterval = null;
+                if (flashSdcardElapsedTimeInterval) {
+                    clearInterval(flashSdcardElapsedTimeInterval);
+                    flashSdcardElapsedTimeInterval = null;
                 }
                 return;
             }
 
-            // Calculate elapsed time based on last known value + time since last update
             const now = Date.now();
-            const timeDiff = Math.floor((now - lastFlashUpdateTime) / 1000);
-            const currentElapsedSeconds = lastFlashElapsedSeconds + timeDiff;
+            const timeDiff = Math.floor((now - lastFlashSdcardUpdateTime) / 1000);
+            const currentElapsedSeconds = lastFlashSdcardElapsedSeconds + timeDiff;
 
             elapsedElement.textContent = formatElapsedTime(currentElapsedSeconds);
         }
@@ -470,9 +471,9 @@
             }
         }
 
-        // Start/update flash elapsed time tracking
-        function startFlashElapsedTimeTracking() {
-            const elapsedElement = document.getElementById('flashElapsedTime');
+        // Start/update flash SD card elapsed time tracking
+        function startFlashSdcardElapsedTimeTracking() {
+            const elapsedElement = document.getElementById('flashSdcardElapsedTime');
             if (!elapsedElement) {
                 return;
             }
@@ -481,19 +482,17 @@
             const isRunning = elapsedElement.getAttribute('data-is-running') === 'true';
 
             if (elapsedSecondsAttr !== null) {
-                lastFlashElapsedSeconds = parseInt(elapsedSecondsAttr, 10) || 0;
-                lastFlashUpdateTime = Date.now();
+                lastFlashSdcardElapsedSeconds = parseInt(elapsedSecondsAttr, 10) || 0;
+                lastFlashSdcardUpdateTime = Date.now();
             }
 
-            // Clear existing interval
-            if (flashElapsedTimeInterval) {
-                clearInterval(flashElapsedTimeInterval);
+            if (flashSdcardElapsedTimeInterval) {
+                clearInterval(flashSdcardElapsedTimeInterval);
             }
 
-            // Start updating every second if flash is running
             if (isRunning) {
-                updateFlashElapsedTime(); // Update immediately
-                flashElapsedTimeInterval = setInterval(updateFlashElapsedTime, 1000);
+                updateFlashSdcardElapsedTime();
+                flashSdcardElapsedTimeInterval = setInterval(updateFlashSdcardElapsedTime, 1000);
             }
         }
 
@@ -533,7 +532,7 @@
         setTimeout(() => {
             showRefreshAnimation();
             startElapsedTimeTracking();
-            startFlashElapsedTimeTracking();
+            startFlashSdcardElapsedTimeTracking();
             initProgressBar();
         }, 50);
 
@@ -577,12 +576,16 @@
             vscode.postMessage({ command: 'flashStart' });
         }
 
-        function flashWatch() {
-            vscode.postMessage({ command: 'flashWatch' });
+        function flashSdcardStart() {
+            vscode.postMessage({ command: 'flashSdcardStart' });
         }
 
-        function flashTerminate() {
-            vscode.postMessage({ command: 'flashTerminate' });
+        function flashSdcardWatch() {
+            vscode.postMessage({ command: 'flashSdcardWatch' });
+        }
+
+        function flashSdcardTerminate() {
+            vscode.postMessage({ command: 'flashSdcardTerminate' });
         }
     </script>
 </body>

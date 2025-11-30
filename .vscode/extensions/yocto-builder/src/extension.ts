@@ -141,15 +141,19 @@ export function activate(context: vscode.ExtensionContext) {
             }),
             vscode.commands.registerCommand('yocto-builder.flashStart', () => {
                 outputChannel.appendLine('Command: flashStart');
-                runCommand('make firmware-controller-flash-usb C=steamdeck FULL=--full', 'Yocto Builder - Flash Start');
+                runCommand('make firmware-controller-flash-usb C=steamdeck', 'Yocto Builder - Flash USB Start');
             }),
-            vscode.commands.registerCommand('yocto-builder.flashWatch', () => {
-                outputChannel.appendLine('Command: flashWatch');
-                runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash Watch');
+            vscode.commands.registerCommand('yocto-builder.flashSdcardStart', () => {
+                outputChannel.appendLine('Command: flashSdcardStart');
+                runCommand('make firmware-controller-flash-sdcard C=steamdeck', 'Yocto Builder - Flash SD Card Start');
             }),
-            vscode.commands.registerCommand('yocto-builder.flashTerminate', () => {
-                outputChannel.appendLine('Command: flashTerminate');
-                runCommand('make firmware-controller-flash-usb-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
+            vscode.commands.registerCommand('yocto-builder.flashSdcardWatch', () => {
+                outputChannel.appendLine('Command: flashSdcardWatch');
+                runCommand('make firmware-controller-flash-sdcard-watch C=steamdeck', 'Yocto Builder - Flash SD Card Watch');
+            }),
+            vscode.commands.registerCommand('yocto-builder.flashSdcardTerminate', () => {
+                outputChannel.appendLine('Command: flashSdcardTerminate');
+                runCommand('make firmware-controller-flash-sdcard-terminate C=steamdeck', 'Yocto Builder - Flash SD Card Terminate');
             }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
@@ -365,13 +369,16 @@ class YoctoBuilderPanel {
                         runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
                         break;
                     case 'flashStart':
-                        runCommand('make firmware-controller-flash-usb C=steamdeck FULL=--full', 'Yocto Builder - Flash Start');
+                        runCommand('make firmware-controller-flash-usb C=steamdeck', 'Yocto Builder - Flash USB Start');
                         break;
-                    case 'flashWatch':
-                        runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash Watch');
+                    case 'flashSdcardStart':
+                        runCommand('make firmware-controller-flash-sdcard C=steamdeck', 'Yocto Builder - Flash SD Card Start');
                         break;
-                    case 'flashTerminate':
-                        runCommand('make firmware-controller-flash-usb-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
+                    case 'flashSdcardWatch':
+                        runCommand('make firmware-controller-flash-sdcard-watch C=steamdeck', 'Yocto Builder - Flash SD Card Watch');
+                        break;
+                    case 'flashSdcardTerminate':
+                        runCommand('make firmware-controller-flash-sdcard-terminate C=steamdeck', 'Yocto Builder - Flash SD Card Terminate');
                         break;
                     case 'toggleStopOnComplete':
                         // Store preference locally (works even when instance is not running)
@@ -486,11 +493,11 @@ class YoctoBuilderPanel {
         }
 
         // Run status checks in parallel to reduce delay
-        const [instanceStatus, buildStatus, controllerStatus, flashStatus] = await Promise.all([
+        const [instanceStatus, buildStatus, controllerStatus, flashSdcardStatus] = await Promise.all([
             this.getInstanceStatus(workspaceFolder.uri.fsPath),
             this.getBuildStatus(workspaceFolder.uri.fsPath),
             this.getControllerStatus(workspaceFolder.uri.fsPath),
-            this.getFlashStatus(workspaceFolder.uri.fsPath)
+            this.getFlashSdcardStatus(workspaceFolder.uri.fsPath)
         ]);
 
         // Read HTML template
@@ -617,43 +624,43 @@ class YoctoBuilderPanel {
         html = html.replace(/\{\{CONTROLLER_HOST\}\}/g, this.escapeHtml(controllerStatus.host || 'N/A'));
         html = html.replace(/\{\{CONTROLLER_STATUS_TEXT\}\}/g, controllerStatus.reachable ? 'Reachable' : 'Unreachable');
 
-        // Flash status section
-        html = html.replace(/\{\{FLASH_STATUS_CLASS\}\}/g, flashStatus.running ? 'running' : 'stopped');
-        html = html.replace(/\{\{FLASH_STATUS_TEXT\}\}/g, flashStatus.running ? 'Running' : 'Not Running');
-        html = html.replace(/\{\{FLASH_START_DISABLED\}\}/g, flashStatus.running ? 'disabled' : '');
-        html = html.replace(/\{\{FLASH_WATCH_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
-        html = html.replace(/\{\{FLASH_TERMINATE_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
+        // Flash SD card status section
+        html = html.replace(/\{\{FLASH_SDCARD_STATUS_CLASS\}\}/g, flashSdcardStatus.running ? 'running' : 'stopped');
+        html = html.replace(/\{\{FLASH_SDCARD_STATUS_TEXT\}\}/g, flashSdcardStatus.running ? 'Running' : 'Not Running');
+        html = html.replace(/\{\{FLASH_SDCARD_START_DISABLED\}\}/g, flashSdcardStatus.running ? 'disabled' : '');
+        html = html.replace(/\{\{FLASH_SDCARD_WATCH_DISABLED\}\}/g, !flashSdcardStatus.running ? 'disabled' : '');
+        html = html.replace(/\{\{FLASH_SDCARD_TERMINATE_DISABLED\}\}/g, !flashSdcardStatus.running ? 'disabled' : '');
 
-        // Flash elapsed time section
-        const flashElapsedHtml = flashStatus.elapsed ? `
+        // Flash SD card elapsed time section
+        const flashSdcardElapsedHtml = flashSdcardStatus.elapsed ? `
         <div class="info-row">
             <span class="info-label">Elapsed:</span>
-            <span id="flashElapsedTime" data-elapsed-seconds="${flashStatus.elapsedSeconds || 0}" data-is-running="${flashStatus.running}">${flashStatus.elapsed}</span>
+            <span id="flashSdcardElapsedTime" data-elapsed-seconds="${flashSdcardStatus.elapsedSeconds || 0}" data-is-running="${flashSdcardStatus.running}">${flashSdcardStatus.elapsed}</span>
         </div>
         ` : '';
-        html = html.replace(/\{\{FLASH_ELAPSED_TIME\}\}/g, flashElapsedHtml);
+        html = html.replace(/\{\{FLASH_SDCARD_ELAPSED_TIME\}\}/g, flashSdcardElapsedHtml);
 
-        // Flash last log lines section
-        const flashLogHtml = flashStatus.lastLogLines && flashStatus.lastLogLines.length > 0 ? `
+        // Flash SD card last log lines section
+        const flashSdcardLogHtml = flashSdcardStatus.lastLogLines && flashSdcardStatus.lastLogLines.length > 0 ? `
         <div class="info-row">
             <span class="info-label">Last log:</span>
         </div>
         <div class="error-code-window">
-            <pre><code>${flashStatus.lastLogLines.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
+            <pre><code>${flashSdcardStatus.lastLogLines.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
         </div>
         ` : '';
-        html = html.replace(/\{\{FLASH_LAST_LOG\}\}/g, flashLogHtml);
+        html = html.replace(/\{\{FLASH_SDCARD_LAST_LOG\}\}/g, flashSdcardLogHtml);
 
-        // Flash errors section
-        const flashErrorsHtml = flashStatus.errors && flashStatus.errors.length > 0 ? `
+        // Flash SD card errors section
+        const flashSdcardErrorsHtml = flashSdcardStatus.errors && flashSdcardStatus.errors.length > 0 ? `
         <div class="error">
             <strong>Errors:</strong>
             <div class="error-code-window">
-                <pre><code>${flashStatus.errors.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
+                <pre><code>${flashSdcardStatus.errors.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
             </div>
         </div>
         ` : '';
-        html = html.replace(/\{\{FLASH_ERRORS\}\}/g, flashErrorsHtml);
+        html = html.replace(/\{\{FLASH_SDCARD_ERRORS\}\}/g, flashSdcardErrorsHtml);
 
         return html;
     }
@@ -855,9 +862,9 @@ class YoctoBuilderPanel {
         return status;
     }
 
-    private async getFlashStatus(workspacePath: string): Promise<FlashStatus> {
+    private async getFlashSdcardStatus(workspacePath: string): Promise<FlashStatus> {
         try {
-            const { stdout } = await execWithTimeout('make firmware-controller-flash-usb-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
+            const { stdout } = await execWithTimeout('make firmware-controller-flash-sdcard-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
             return this.parseFlashStatusOutput(stdout);
         } catch (error: any) {
             if (error?.stdout) {
