@@ -73,8 +73,6 @@ interface BuildStatus {
         total: number;
     };
     lastSuccessfulBuild?: string;
-    errors?: string[];
-    warning?: string;
 }
 
 interface ControllerStatus {
@@ -87,8 +85,6 @@ interface FlashStatus {
     running: boolean;
     elapsed?: string;
     elapsedSeconds?: number; // Total seconds for client-side incrementing
-    lastLogLines?: string[];
-    errors?: string[];
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -377,14 +373,12 @@ class YoctoBuilderPanel {
                         runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
                         break;
                     case 'flashStart':
-                        const fullMode = message.full || false;
-                        const flashCommand = fullMode
-                            ? 'make firmware-controller-flash-usb C=steamdeck FULL=--full'
-                            : 'make firmware-controller-flash-usb C=steamdeck';
+                        const flashMode = message.mode || 'bootloader';
+                        const flashCommand = `make firmware-controller-flash-usb C=steamdeck MODE=${flashMode}`;
                         runCommand(flashCommand, 'Yocto Builder - Flash USB Start');
                         break;
-                    case 'toggleFlashUsbFull':
-                        this._context.globalState.update('flashUsbFull', message.value || false);
+                    case 'toggleFlashUsbMode':
+                        this._context.globalState.update('flashUsbMode', message.value || 'bootloader');
                         this.update();
                         break;
                     case 'flashUsbWatch':
@@ -622,25 +616,6 @@ class YoctoBuilderPanel {
         ` : '';
         html = html.replace(/\{\{BUILD_LAST_SUCCESSFUL\}\}/g, lastBuildHtml);
 
-        // Build warning section
-        const warningHtml = buildStatus.warning ? `
-        <div class="warning">
-            <strong>⚠ Warning:</strong> ${this.escapeHtml(buildStatus.warning)}
-        </div>
-        ` : '';
-        html = html.replace(/\{\{BUILD_WARNING\}\}/g, warningHtml);
-
-        // Build errors section - show last error in code window
-        const errorsHtml = buildStatus.errors && buildStatus.errors.length > 0 ? `
-        <div class="error">
-            <strong>Last Error:</strong>
-            <div class="error-code-window">
-                <pre><code>${buildStatus.errors.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
-            </div>
-        </div>
-        ` : '';
-        html = html.replace(/\{\{BUILD_ERRORS\}\}/g, errorsHtml);
-
         // Controller status section
         html = html.replace(/\{\{CONTROLLER_STATUS_CLASS\}\}/g, controllerStatus.reachable ? 'running' : 'stopped');
         html = html.replace(/\{\{CONTROLLER_NAME\}\}/g, this.escapeHtml(controllerStatus.name || 'N/A'));
@@ -663,28 +638,6 @@ class YoctoBuilderPanel {
         ` : '';
         html = html.replace(/\{\{FLASH_SDCARD_ELAPSED_TIME\}\}/g, flashSdcardElapsedHtml);
 
-        // Flash SD card last log lines section
-        const flashSdcardLogHtml = flashSdcardStatus.lastLogLines && flashSdcardStatus.lastLogLines.length > 0 ? `
-        <div class="info-row">
-            <span class="info-label">Last log:</span>
-        </div>
-        <div class="error-code-window">
-            <pre><code>${flashSdcardStatus.lastLogLines.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
-        </div>
-        ` : '';
-        html = html.replace(/\{\{FLASH_SDCARD_LAST_LOG\}\}/g, flashSdcardLogHtml);
-
-        // Flash SD card errors section
-        const flashSdcardErrorsHtml = flashSdcardStatus.errors && flashSdcardStatus.errors.length > 0 ? `
-        <div class="error">
-            <strong>Errors:</strong>
-            <div class="error-code-window">
-                <pre><code>${flashSdcardStatus.errors.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
-            </div>
-        </div>
-        ` : '';
-        html = html.replace(/\{\{FLASH_SDCARD_ERRORS\}\}/g, flashSdcardErrorsHtml);
-
         // Flash USB status section
         html = html.replace(/\{\{FLASH_USB_STATUS_CLASS\}\}/g, flashUsbStatus.running ? 'running' : 'stopped');
         html = html.replace(/\{\{FLASH_USB_STATUS_TEXT\}\}/g, flashUsbStatus.running ? 'Running' : 'Not Running');
@@ -701,31 +654,25 @@ class YoctoBuilderPanel {
         ` : '';
         html = html.replace(/\{\{FLASH_USB_ELAPSED_TIME\}\}/g, flashUsbElapsedHtml);
 
-        // Flash USB last log lines section
-        const flashUsbLogHtml = flashUsbStatus.lastLogLines && flashUsbStatus.lastLogLines.length > 0 ? `
-        <div class="info-row">
-            <span class="info-label">Last log:</span>
+        // Flash USB mode toggle (bootloader vs rootfs)
+        const flashUsbMode = this._context.globalState.get<string>('flashUsbMode', 'bootloader');
+        const flashUsbRunning = flashUsbStatus.running;
+        const flashUsbModeHtml = `
+        <div class="stop-on-complete" style="margin-top: 8px;">
+            <label style="display: block; margin-bottom: 4px; font-weight: bold;">Flash Target:</label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: ${flashUsbRunning ? 'not-allowed' : 'pointer'}; opacity: ${flashUsbRunning ? '0.6' : '1'};">
+                <input type="radio" name="flashUsbMode" value="bootloader" ${flashUsbMode === 'bootloader' ? 'checked' : ''}
+                    ${flashUsbRunning ? 'disabled' : ''} onchange="updateFlashUsbMode('bootloader')">
+                Bootloader (SPI)
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: ${flashUsbRunning ? 'not-allowed' : 'pointer'}; opacity: ${flashUsbRunning ? '0.6' : '1'};">
+                <input type="radio" name="flashUsbMode" value="rootfs" ${flashUsbMode === 'rootfs' ? 'checked' : ''}
+                    ${flashUsbRunning ? 'disabled' : ''} onchange="updateFlashUsbMode('rootfs')">
+                Rootfs (NVMe)
+            </label>
         </div>
-        <div class="error-code-window">
-            <pre><code>${flashUsbStatus.lastLogLines.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
-        </div>
-        ` : '';
-        html = html.replace(/\{\{FLASH_USB_LAST_LOG\}\}/g, flashUsbLogHtml);
-
-        // Flash USB errors section
-        const flashUsbErrorsHtml = flashUsbStatus.errors && flashUsbStatus.errors.length > 0 ? `
-        <div class="error">
-            <strong>Errors:</strong>
-            <div class="error-code-window">
-                <pre><code>${flashUsbStatus.errors.map(e => this.escapeHtml(e)).join('\n')}</code></pre>
-            </div>
-        </div>
-        ` : '';
-        html = html.replace(/\{\{FLASH_USB_ERRORS\}\}/g, flashUsbErrorsHtml);
-
-        // Flash USB full checkbox state
-        const flashUsbFullChecked = this._context.globalState.get<boolean>('flashUsbFull', false);
-        html = html.replace(/\{\{FLASH_USB_FULL_CHECKED\}\}/g, flashUsbFullChecked ? 'checked' : '');
+        `;
+        html = html.replace(/\{\{FLASH_USB_MODE_TOGGLE\}\}/g, flashUsbModeHtml);
 
         return html;
     }
@@ -822,8 +769,7 @@ class YoctoBuilderPanel {
         const lines = stdout.split('\n');
 
         const status: BuildStatus = {
-            running: stdout.includes('Build session is running'),
-            errors: []
+            running: stdout.includes('Build session is running')
         };
 
         // Extract elapsed time if available (whether running or not)
@@ -852,41 +798,6 @@ class YoctoBuilderPanel {
         const lastBuildMatch = stdout.match(/Last successful build: (.+)/);
         if (lastBuildMatch) {
             status.lastSuccessfulBuild = lastBuildMatch[1];
-        }
-
-        // Extract errors if any (when build is not running)
-        if (!status.running) {
-            const errorSection = stdout.split('=== Recent Build Errors ===');
-            if (errorSection.length > 1) {
-                const errorLines = errorSection[1].split('\n')
-                    .filter(line => {
-                        const trimmed = line.trim();
-                        // Filter out the "no errors" message and section headers
-                        return trimmed &&
-                            !trimmed.includes('===') &&
-                            !trimmed.includes('(No obvious errors found in recent log output)');
-                    })
-                    .slice(0, 5);
-                // Only set errors if there are actual error lines
-                if (errorLines.length > 0) {
-                    status.errors = errorLines;
-                }
-            }
-
-            // Extract warning about BitBake lock file
-            if (stdout.includes('⚠ Warning: BitBake lock file exists')) {
-                // Extract the full warning block (warning + description + suggestion)
-                const warningSection = stdout.split('⚠ Warning:')[1];
-                if (warningSection) {
-                    const warningLines = warningSection.split('\n')
-                        .map(line => line.trim())
-                        .filter(line => line && !line.startsWith('==='))
-                        .slice(0, 3); // Get warning and up to 2 following lines
-                    status.warning = warningLines.join(' ');
-                } else {
-                    status.warning = 'BitBake lock file exists but no build session is running. Previous build may have been interrupted.';
-                }
-            }
         }
 
         return status;
@@ -940,10 +851,8 @@ class YoctoBuilderPanel {
     }
 
     private parseFlashStatusOutput(stdout: string): FlashStatus {
-        const lines = stdout.split('\n');
         const status: FlashStatus = {
-            running: stdout.includes('Flash session is running'),
-            errors: []
+            running: stdout.includes('Flash session is running')
         };
 
         // Extract elapsed time if available
@@ -951,40 +860,6 @@ class YoctoBuilderPanel {
         if (elapsedMatch) {
             status.elapsed = elapsedMatch[1].trim();
             status.elapsedSeconds = this.parseElapsedTimeToSeconds(elapsedMatch[1].trim());
-        }
-
-        // Extract last log lines (usually after "Last log output:" or at the end)
-        const logStartIndex = stdout.indexOf('Last log output:');
-        if (logStartIndex !== -1) {
-            const logSection = stdout.substring(logStartIndex + 'Last log output:'.length);
-            const logLines = logSection.split('\n')
-                .map(line => line.trim())
-                .filter(line => line && !line.includes('==='))
-                .slice(0, 10);
-            if (logLines.length > 0) {
-                status.lastLogLines = logLines;
-            }
-        } else if (status.running) {
-            // If running, get last few lines from the output
-            const lastLines = lines
-                .filter(line => line.trim() && !line.includes('Flash session is running') && !line.includes('Elapsed:'))
-                .slice(-5);
-            if (lastLines.length > 0) {
-                status.lastLogLines = lastLines.map(line => line.trim());
-            }
-        }
-
-        // Extract errors if any
-        if (!status.running) {
-            const errorLines = lines
-                .filter(line => {
-                    const lower = line.toLowerCase();
-                    return lower.includes('error') || lower.includes('failed') || lower.includes('fatal');
-                })
-                .slice(0, 5);
-            if (errorLines.length > 0) {
-                status.errors = errorLines.map(line => line.trim());
-            }
         }
 
         return status;

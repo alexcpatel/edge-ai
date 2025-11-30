@@ -15,27 +15,16 @@ file "$ARCHIVE_PATH" | grep -q "gzip" || { echo "Not a gzip archive"; exit 1; }
 
 ARCHIVE_NAME=$(basename "$ARCHIVE_PATH" .tegraflash.tar.gz)
 EXTRACT_DIR="$CONTROLLER_BASE_DIR/tegraflash-extracted/$ARCHIVE_NAME"
-MARKER="$EXTRACT_DIR/.extracted"
 
-ARCHIVE_CHECKSUM=$(sha256sum "$ARCHIVE_PATH" | cut -d' ' -f1)
-NEEDS_EXTRACT=true
-
-if [ -f "$MARKER" ] && [ -f "$EXTRACT_DIR/dosdcard.sh" ]; then
-    CACHED_CHECKSUM=$(cat "$MARKER" 2>/dev/null || echo "")
-    if [ "$CACHED_CHECKSUM" = "$ARCHIVE_CHECKSUM" ]; then
-        echo "Using cached extraction"
-        NEEDS_EXTRACT=false
-    fi
-fi
-
-if [ "$NEEDS_EXTRACT" = true ]; then
+if [ -f "$EXTRACT_DIR/dosdcard.sh" ]; then
+    echo "Using existing extraction"
+else
     echo "Extracting to $EXTRACT_DIR..."
-    rm -rf "$EXTRACT_DIR"
+    sudo rm -rf "$EXTRACT_DIR"
     mkdir -p "$EXTRACT_DIR"
     tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_DIR"
     [ -f "$EXTRACT_DIR/dosdcard.sh" ] || { echo "dosdcard.sh not found"; exit 1; }
     chmod +x "$EXTRACT_DIR"/*.sh 2>/dev/null || true
-    echo "$ARCHIVE_CHECKSUM" > "$MARKER"
 fi
 
 cd "$EXTRACT_DIR"

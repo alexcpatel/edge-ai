@@ -158,11 +158,6 @@ check_status() {
         controller_ssh "$CONTROLLER" "tail -5 $LOG_FILE 2>/dev/null" || true
     else
         echo "No flash session found"
-        if controller_ssh "$CONTROLLER" "test -f $LOG_FILE" 2>/dev/null; then
-            echo ""
-            echo "Last log output:"
-            controller_ssh "$CONTROLLER" "tail -20 $LOG_FILE" || true
-        fi
     fi
 }
 

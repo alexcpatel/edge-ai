@@ -78,8 +78,8 @@ firmware-controller-deploy: ## Deploy scripts to controller
 firmware-controller-push-tegraflash: ## Push tegraflash to controller
 	@$(CONTROLLER_DIR)/scripts/push-tegraflash.sh
 
-firmware-controller-flash-usb: firmware-controller-deploy ## Flash Jetson via USB (FULL=--full for full image)
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh start $(FULL)
+firmware-controller-flash-usb: firmware-controller-deploy ## Flash Jetson via USB (MODE=bootloader|rootfs)
+	@$(CONTROLLER_DIR)/scripts/flash-usb.sh start $(MODE)
 	@$(CONTROLLER_DIR)/scripts/flash-usb.sh watch
 
 firmware-controller-flash-usb-status: ## Check USB flash status

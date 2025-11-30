@@ -30,15 +30,12 @@ local_conf_header:
     DISTRO_FEATURES = "x11 opengl "
 
     IMAGE_CLASSES += "image_types_tegra"
-    IMAGE_CLASSES += "bootimg"
     IMAGE_FSTYPES = "tegraflash"
 
-    TEGRA_FLASH_USE_INITRD = "1"
-    TOS_REMOVE_RECOVERY = "1"
-    BOOTFS_FSTYPE = "vfat"
     TEGRA_FLASH_DEFAULT_DEVICE = "nvme0n1"
+    TEGRA_FLASH_USE_EXTERNAL_STORAGE = "1"
 
-    IMAGE_BOOT_FILES += "Image tegra234-p3768-0000+p3767-0005-nv-super.dtb"
+    TEGRA_FLASH_USE_INITRD = "1"
 
     EXTRA_IMAGE_FEATURES += "debug-tweaks"
 

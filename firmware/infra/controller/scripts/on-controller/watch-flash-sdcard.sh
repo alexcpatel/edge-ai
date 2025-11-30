@@ -46,14 +46,5 @@ if [ -f "$LOG_FILE" ]; then
     echo ''
     echo 'Last 50 lines:'
     tail -50 "$LOG_FILE"
-    echo ''
-    echo 'Checking for errors...'
-    if tail -100 "$LOG_FILE" | grep -qiE 'error|failed|fatal|exception'; then
-        echo ''
-        echo '⚠ Errors found:'
-        tail -100 "$LOG_FILE" | grep -iE 'error|failed|fatal|exception' | tail -10
-    else
-        echo 'No errors detected in log'
-    fi
 fi
 

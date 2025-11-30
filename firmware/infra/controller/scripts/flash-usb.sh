@@ -18,14 +18,18 @@ is_flash_running() {
 }
 
 start_flash() {
-    FLASH_MODE="spi-only"
-    [ "${1:-}" = "--full" ] && FLASH_MODE="full"
+    FLASH_MODE="${1:-bootloader}"
+    [ -z "$FLASH_MODE" ] && FLASH_MODE="bootloader"
+    [[ "$FLASH_MODE" == "bootloader" || "$FLASH_MODE" == "rootfs" ]] || {
+        log_error "Invalid mode: $FLASH_MODE. Must be 'bootloader' or 'rootfs'"
+        exit 1
+    }
 
     is_flash_running && { log_error "Flash already running. Use 'make firmware-controller-flash-usb-terminate' first"; exit 1; }
 
     log_info "=== USB Flash Setup ==="
-    [ "$FLASH_MODE" = "full" ] && log_info "Mode: FULL (bootloader + rootfs)" \
-        || log_info "Mode: SPI-only (bootloader). Use --full for complete flash."
+    [ "$FLASH_MODE" = "rootfs" ] && log_info "Mode: Rootfs (NVMe)" \
+        || log_info "Mode: Bootloader (SPI)"
     echo ""
     log_info "1. Connect Jetson to controller via USB-C"
     log_info "2. Put Jetson in recovery mode (short FC_REC to GND, then power on)"
@@ -89,17 +93,12 @@ check_status() {
     if is_flash_running; then
         echo "Flash session is running"
         local elapsed
-        elapsed=$(controller_ssh "$CONTROLLER" "pgrep -f 'doflash.sh\|flash-usb-device.sh' | head -1 | \
+        elapsed=$(controller_ssh "$CONTROLLER" "pgrep -f 'doflash.sh\|doexternal.sh\|flash-usb-device.sh' | head -1 | \
             xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' '" 2>/dev/null || echo "")
         [ -n "$elapsed" ] && echo "Elapsed: $elapsed" || echo "Flash starting..."
         controller_ssh "$CONTROLLER" "tail -5 $LOG_FILE 2>/dev/null" || true
     else
         echo "No flash session found"
-        if controller_ssh "$CONTROLLER" "test -f $LOG_FILE" 2>/dev/null; then
-            echo ""
-            echo "Last log output:"
-            controller_ssh "$CONTROLLER" "tail -20 $LOG_FILE" || true
-        fi
     fi
 }
 
@@ -117,7 +116,7 @@ terminate_flash() {
     is_flash_running || { log_error "No flash session to terminate"; exit 1; }
     log_info "Terminating flash..."
     controller_ssh "$CONTROLLER" "tmux kill-session -t $SESSION 2>/dev/null || true" || true
-    controller_ssh "$CONTROLLER" "pkill -f 'doflash.sh' 2>/dev/null || true" || true
+    controller_ssh "$CONTROLLER" "pkill -f 'doflash.sh\|doexternal.sh' 2>/dev/null || true" || true
     log_success "Flash terminated"
 }
 
@@ -126,5 +125,5 @@ case "${1:-start}" in
     status) check_status ;;
     watch) watch_flash ;;
     terminate) terminate_flash ;;
-    *) echo "Usage: $0 [start|status|watch|terminate] [--full]"; exit 1 ;;
+    *) echo "Usage: $0 [start|status|watch|terminate] [bootloader|rootfs]"; exit 1 ;;
 esac

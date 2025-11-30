@@ -328,8 +328,6 @@
             {{BUILD_TASK_PROGRESS}}
             {{BUILD_LAST_SUCCESSFUL}}
             {{DOWNLOAD_ARTIFACTS_BUTTON}}
-            {{BUILD_WARNING}}
-            {{BUILD_ERRORS}}
             <div class="button-group">
                 <button onclick="buildStart()" {{BUILD_START_DISABLED}}>Start</button>
                 <button onclick="buildWatch()" {{BUILD_WATCH_DISABLED}}>Watch</button>
@@ -357,27 +355,17 @@
                 <span><strong>USB Flash:</strong> {{FLASH_USB_STATUS_TEXT}}</span>
             </div>
             {{FLASH_USB_ELAPSED_TIME}}
-            {{FLASH_USB_LAST_LOG}}
-            {{FLASH_USB_ERRORS}}
             <div class="button-group">
                 <button onclick="flashStart()" {{FLASH_USB_START_DISABLED}}>Start USB Flash</button>
                 <button onclick="flashUsbWatch()" {{FLASH_USB_WATCH_DISABLED}}>Watch</button>
                 <button onclick="flashUsbTerminate()" {{FLASH_USB_TERMINATE_DISABLED}}>Terminate</button>
             </div>
-            <div class="stop-on-complete" style="margin-top: 8px;">
-                <label>
-                    <input type="checkbox" id="flashUsbFull" {{FLASH_USB_FULL_CHECKED}}
-                        onchange="updateFlashUsbFull(this.checked)">
-                    Full flash (bootloader + rootfs)
-                </label>
-            </div>
+            {{FLASH_USB_MODE_TOGGLE}}
             <div class="status" style="margin-top: 12px;">
                 <div class="status-indicator {{FLASH_SDCARD_STATUS_CLASS}}"></div>
                 <span><strong>SD Card Flash:</strong> {{FLASH_SDCARD_STATUS_TEXT}}</span>
             </div>
             {{FLASH_SDCARD_ELAPSED_TIME}}
-            {{FLASH_SDCARD_LAST_LOG}}
-            {{FLASH_SDCARD_ERRORS}}
             <div class="button-group">
                 <button onclick="flashSdcardStart()" {{FLASH_SDCARD_START_DISABLED}}>Start SD Card</button>
                 <button onclick="flashSdcardWatch()" {{FLASH_SDCARD_WATCH_DISABLED}}>Watch</button>
@@ -641,13 +629,13 @@
         }
 
         function flashStart() {
-            const fullCheckbox = document.getElementById('flashUsbFull');
-            const full = fullCheckbox ? fullCheckbox.checked : false;
-            vscode.postMessage({ command: 'flashStart', full: full });
+            const modeRadio = document.querySelector('input[name="flashUsbMode"]:checked');
+            const mode = modeRadio ? modeRadio.value : 'bootloader';
+            vscode.postMessage({ command: 'flashStart', mode: mode });
         }
 
-        function updateFlashUsbFull(checked) {
-            vscode.postMessage({ command: 'toggleFlashUsbFull', value: checked });
+        function updateFlashUsbMode(mode) {
+            vscode.postMessage({ command: 'toggleFlashUsbMode', value: mode });
         }
 
         function flashUsbWatch() {
