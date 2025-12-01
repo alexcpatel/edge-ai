@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EC2_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
+export REMOTE_SOURCE_DIR="${YOCTO_DIR}/edge-ai"
+
 source "$EC2_DIR/config/aws-config.sh"
 source "$REPO_ROOT/firmware/yocto/config/yocto-config.sh"
 

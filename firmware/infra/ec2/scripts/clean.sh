@@ -24,18 +24,17 @@ run_cleanall() {
     ssh_cmd "$ip" "cd $YOCTO_DIR && export PATH=\"\$HOME/.local/bin:\$PATH\" && kas shell $KAS_CONFIG -c 'bitbake -c cleanall $1'"
 }
 
-CLEAN_ALL=false CLEAN_PKG="" CLEAN_IMG=false
+CLEAN_ALL=false CLEAN_PKG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --all) CLEAN_ALL=true; shift ;;
         --package) [ -z "${2:-}" ] && { log_error "--package requires a name"; exit 1; }; CLEAN_PKG="$2"; shift 2 ;;
-        --image) CLEAN_IMG=true; shift ;;
         *) log_error "Unknown: $1"; exit 1 ;;
     esac
 done
 
-[ "$CLEAN_ALL" = false ] && [ -z "$CLEAN_PKG" ] && [ "$CLEAN_IMG" = false ] && CLEAN_IMG=true
+[ "$CLEAN_ALL" = false ] && [ -z "$CLEAN_PKG" ]
 
 cleanup_bitbake
 
@@ -47,8 +46,4 @@ elif [ -n "$CLEAN_PKG" ]; then
     log_info "Cleaning package: $CLEAN_PKG"
     run_cleanall "$CLEAN_PKG"
     log_success "Package cleaned"
-elif [ "$CLEAN_IMG" = true ]; then
-    log_info "Cleaning image: $YOCTO_IMAGE"
-    run_cleanall "$YOCTO_IMAGE"
-    log_success "Image cleaned"
 fi

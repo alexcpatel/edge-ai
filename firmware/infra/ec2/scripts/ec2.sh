@@ -13,8 +13,7 @@ get_instance_type() {
 setup_ec2() {
     local ip="$1"
     log_info "Setting up EC2..."
-    ssh_cmd "$ip" "YOCTO_BRANCH='$YOCTO_BRANCH' YOCTO_MACHINE='$YOCTO_MACHINE' \
-        YOCTO_DIR='$YOCTO_DIR' REMOTE_SOURCE_DIR='$REMOTE_SOURCE_DIR' bash -s" \
+    ssh_cmd "$ip" "YOCTO_MACHINE='$YOCTO_MACHINE' YOCTO_DIR='$YOCTO_DIR' REMOTE_SOURCE_DIR='$REMOTE_SOURCE_DIR' bash -s" \
         < "$(dirname "${BASH_SOURCE[0]}")/on-ec2/setup.sh"
     log_success "EC2 setup completed"
 }
