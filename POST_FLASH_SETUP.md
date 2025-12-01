@@ -47,41 +47,62 @@ deepstream-app -c /opt/nvidia/deepstream/deepstream/samples/configs/deepstream-a
 
 ## AWS IoT
 
-### Install AWS CLI and IoT SDK
+### Prerequisites (Dev Machine)
 
 ```bash
-pip3 install awscli awsiotsdk
-```
+# Install provisioning tools
+cd iot/provision
+pip install -e .
 
-### Configure AWS credentials
-
-```bash
-aws configure
-```
-
-### AWS IoT Device Setup (Automated)
-
-Use the provisioning script from `iot/`:
-
-```bash
-# First, deploy shared resources via Terraform (run once from dev machine)
-cd iot/terraform
+# Deploy shared infrastructure (once)
+cd ../terraform
 terraform init
 terraform apply
-
-# Then on each device, run provisioning
-cd iot/python
-pip3 install -e .
-edge-ai-iot provision
 ```
 
-This will:
+### Provision Device (From Dev Machine)
 
-- Generate ECDSA P-256 key pair on device
-- Create IoT Thing and certificate via CSR
-- Save credentials to `/etc/aws-iot/`
+```bash
+# Provision device at IP address
+edge-ai-iot provision <DEVICE_IP>
 
-Credentials are stored in `/etc/aws-iot/config.json`
+# With options
+edge-ai-iot provision 192.168.1.100 --user root --port 22
+```
+
+This SSHs into the device and:
+
+1. Installs Python packages (awscli, awsiotsdk, numpy, paho-mqtt, boto3, requests)
+2. Generates ECDSA P-256 key pair on device
+3. Creates IoT Thing and certificate via CSR
+4. Downloads Amazon Root CA
+5. Saves credentials to `/etc/aws-iot/`
+6. Verifies IoT connection
+
+### Re-provision After Reflash
+
+```bash
+# Idempotent - cleans up old resources first
+edge-ai-iot provision <DEVICE_IP>
+```
+
+### Skip Steps
+
+```bash
+# Skip dependency installation (faster re-provision)
+edge-ai-iot provision <DEVICE_IP> --skip-deps
+
+# Skip connection verification
+edge-ai-iot provision <DEVICE_IP> --skip-verify
+```
+
+### Cleanup Orphaned Resources
+
+```bash
+# Remove things/certs not attached to anything
+edge-ai-iot cleanup --dry-run  # preview
+edge-ai-iot cleanup            # execute
+```
 
 ---
 
@@ -140,17 +161,37 @@ source /opt/ros/jazzy/setup.bash  # if installed
 
 ---
 
-## Python Packages
+## Systemd Services
 
-Common packages to install:
+### Create a service for your application
 
 ```bash
-pip3 install \
-    numpy \
-    opencv-python \
-    paho-mqtt \
-    boto3 \
-    requests
+cat > /etc/systemd/system/edge-ai-app.service << 'EOF'
+[Unit]
+Description=Edge AI Application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/edge-ai/app.py
+Restart=always
+RestartSec=10
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable edge-ai-app
+systemctl start edge-ai-app
+```
+
+### View logs
+
+```bash
+journalctl -u edge-ai-app -f
 ```
 
 ---
@@ -183,12 +224,29 @@ connmanctl
 
 - [ ] SSH accessible via ethernet
 - [ ] Hostname is `edge-ai`
+- [ ] Weston display running
 
-**Post-flash setup:**
+**NVIDIA SDK:**
 
-- [ ] NVIDIA SDK packages (cuDNN, TensorRT, DeepStream)
-- [ ] AWS IoT certificates deployed
-- [ ] AWS CLI configured
-- [ ] Telemetry agent running
-- [ ] Test CUDA: run a CUDA sample
+- [ ] cuDNN installed
+- [ ] TensorRT installed
+- [ ] DeepStream installed
+- [ ] Test CUDA sample
 - [ ] Test DeepStream pipeline
+
+**AWS IoT (run from dev machine):**
+
+- [ ] Terraform infrastructure deployed (`iot/terraform`)
+- [ ] Device provisioned (`edge-ai-iot provision <IP>`)
+
+**Application:**
+
+- [ ] Application deployed to `/opt/edge-ai/`
+- [ ] Systemd service created and enabled
+- [ ] Telemetry agent running
+
+**Optional:**
+
+- [ ] ROS2 packages installed
+- [ ] Static IP configured
+- [ ] WiFi configured

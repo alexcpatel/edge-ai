@@ -93,7 +93,7 @@ check_status() {
     if is_flash_running; then
         echo "Flash session is running"
         local elapsed
-        elapsed=$(controller_ssh "$CONTROLLER" "pgrep -f 'doflash.sh\|doexternal.sh\|flash-device.sh' | head -1 | \
+        elapsed=$(controller_ssh "$CONTROLLER" "pgrep -f 'doflash.sh|doexternal.sh|initrd-flash|flash-device.sh' | head -1 | \
             xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' '" 2>/dev/null || echo "")
         [ -n "$elapsed" ] && echo "Elapsed: $elapsed" || echo "Flash starting..."
         controller_ssh "$CONTROLLER" "tail -5 $LOG_FILE 2>/dev/null" || true

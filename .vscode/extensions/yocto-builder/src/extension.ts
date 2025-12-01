@@ -148,6 +148,10 @@ export function activate(context: vscode.ExtensionContext) {
                 outputChannel.appendLine('Command: flashTerminate');
                 runCommand('make firmware-controller-flash-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
             }),
+            vscode.commands.registerCommand('yocto-builder.pushTegraflash', () => {
+                outputChannel.appendLine('Command: pushTegraflash');
+                runCommand('make firmware-controller-push-tegraflash C=steamdeck', 'Yocto Builder - Push Tegraflash');
+            }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
                 provider?.refresh();
@@ -375,6 +379,9 @@ class YoctoBuilderPanel {
                         break;
                     case 'flashTerminate':
                         runCommand('make firmware-controller-flash-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
+                        break;
+                    case 'pushTegraflash':
+                        runCommand('make firmware-controller-push-tegraflash C=steamdeck', 'Yocto Builder - Push Tegraflash');
                         break;
                     case 'toggleStopOnComplete':
                         // Store preference locally (works even when instance is not running)
@@ -611,10 +618,10 @@ class YoctoBuilderPanel {
         html = html.replace(/\{\{FLASH_TERMINATE_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
 
         // Flash elapsed time section
-        const flashElapsedHtml = flashStatus.elapsed ? `
+        const flashElapsedHtml = flashStatus.running ? `
         <div class="info-row">
             <span class="info-label">Elapsed:</span>
-            <span id="flashElapsedTime" data-elapsed-seconds="${flashStatus.elapsedSeconds || 0}" data-is-running="${flashStatus.running}">${flashStatus.elapsed}</span>
+            <span id="flashElapsedTime" data-elapsed-seconds="${flashStatus.elapsedSeconds || 0}" data-is-running="${flashStatus.running}">${flashStatus.elapsed || '00:00'}</span>
         </div>
         ` : '';
         html = html.replace(/\{\{FLASH_ELAPSED_TIME\}\}/g, flashElapsedHtml);
