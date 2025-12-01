@@ -16,3 +16,9 @@ variable "policy_name" {
   default     = "edge-ai-device-policy"
 }
 
+variable "fleet_provisioning_template_name" {
+  description = "Fleet provisioning template name"
+  type        = string
+  default     = "edge-ai-provisioning"
+}
+

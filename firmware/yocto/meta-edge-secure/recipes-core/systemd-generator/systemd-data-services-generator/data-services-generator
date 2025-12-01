@@ -1,0 +1,28 @@
+#!/bin/bash
+# Systemd generator: symlinks service files from /data/services into systemd
+# Runs at boot before services start
+# See: https://www.freedesktop.org/software/systemd/man/systemd.generator.html
+
+set -e
+
+NORMAL_DIR="$1"
+EARLY_DIR="$2"
+LATE_DIR="$3"
+
+DATA_SERVICES="/data/services"
+
+[ -d "$DATA_SERVICES" ] || exit 0
+
+for svc in "$DATA_SERVICES"/*.service; do
+    [ -f "$svc" ] || continue
+    name=$(basename "$svc")
+    ln -sf "$svc" "$NORMAL_DIR/$name"
+
+    # Check for [Install] WantedBy and create symlinks
+    wanted_by=$(grep -E "^WantedBy=" "$svc" 2>/dev/null | cut -d= -f2 || true)
+    for target in $wanted_by; do
+        mkdir -p "$NORMAL_DIR/${target}.wants"
+        ln -sf "$svc" "$NORMAL_DIR/${target}.wants/$name"
+    done
+done
+

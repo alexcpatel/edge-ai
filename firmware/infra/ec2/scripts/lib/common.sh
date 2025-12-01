@@ -6,10 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EC2_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-export REMOTE_SOURCE_DIR="${YOCTO_DIR}/edge-ai"
-
 source "$EC2_DIR/config/aws-config.sh"
 source "$REPO_ROOT/firmware/yocto/config/yocto-config.sh"
+
+export REMOTE_SOURCE_DIR="${YOCTO_DIR}/edge-ai"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 log_info() { echo -e "${YELLOW}$*${NC}"; }

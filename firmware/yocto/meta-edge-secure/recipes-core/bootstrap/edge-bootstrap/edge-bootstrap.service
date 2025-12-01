@@ -1,0 +1,18 @@
+[Unit]
+Description=Edge AI First Boot Bootstrap
+ConditionPathExists=/data/.need_provisioning
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/edge-bootstrap.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target
+

@@ -10,17 +10,19 @@ is_build_running() {
 
 upload_source() {
     local ip="$1"
+    local dest="${EC2_USER}@${ip}:${REMOTE_SOURCE_DIR}"
+
     log_info "Uploading source files to EC2..."
-    ssh_cmd "$ip" "mkdir -p $REMOTE_SOURCE_DIR $YOCTO_DIR/config"
-    rsync_cmd "$ip" -avz --progress \
-        --include='layers/' --include='layers/**' \
-        --include='sources/' --include='sources/**' \
-        --include='firmware/' --include='firmware/yocto/' --include='firmware/yocto/**' \
-        --include='firmware/infra/' --include='firmware/infra/ec2/' \
-        --include='firmware/infra/ec2/scripts/' --include='firmware/infra/ec2/scripts/on-ec2/' \
-        --include='firmware/infra/ec2/scripts/on-ec2/**' \
-        --exclude='*' --exclude='.git' \
-        "$REPO_ROOT/" "${EC2_USER}@${ip}:${REMOTE_SOURCE_DIR}/"
+    ssh_cmd "$ip" "mkdir -p ${REMOTE_SOURCE_DIR}/firmware/yocto ${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts"
+
+    # Upload Yocto config and layers
+    rsync_cmd "$ip" -avz --delete \
+        "$REPO_ROOT/firmware/yocto/" "$dest/firmware/yocto/"
+
+    # Upload on-EC2 build scripts
+    rsync_cmd "$ip" -avz --delete \
+        "$REPO_ROOT/firmware/infra/ec2/scripts/on-ec2/" "$dest/firmware/infra/ec2/scripts/on-ec2/"
+
     log_success "Upload completed"
 }
 
@@ -43,8 +45,28 @@ start_build() {
         log_error "Failed to start build"; exit 1
     }
 
-    for _ in {1..3}; do is_build_running "$ip" && break; sleep 0.5; done
-    is_build_running "$ip" || { log_error "Build failed to start"; ssh_cmd "$ip" "tail -50 /tmp/yocto-build.log" || true; exit 1; }
+    # Quick check loop - exits as soon as session is confirmed running
+    for i in {1..10}; do
+        if is_build_running "$ip"; then
+            break
+        fi
+        # Check if it died (log file exists but session doesn't)
+        if ssh_cmd "$ip" "test -f /tmp/yocto-build.log" 2>/dev/null; then
+            sleep 0.3
+            if ! is_build_running "$ip"; then
+                log_error "Build session died immediately. Log output:"
+                ssh_cmd "$ip" "cat /tmp/yocto-build.log" || true
+                exit 1
+            fi
+        fi
+        sleep 0.2
+    done
+
+    is_build_running "$ip" || {
+        log_error "Build failed to start"
+        ssh_cmd "$ip" "cat /tmp/yocto-build.log 2>/dev/null" || true
+        exit 1
+    }
 
     ssh_cmd "$ip" "pkill -f 'monitor-build-stop.sh' 2>/dev/null || true" || true
     ssh_cmd "$ip" "setsid bash $monitor_script > /tmp/build-monitor.log 2>&1 < /dev/null &" || true

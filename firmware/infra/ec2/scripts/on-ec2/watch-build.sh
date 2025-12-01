@@ -50,13 +50,3 @@ MONITOR_PID=$!
 # Wait for tail to finish (will be killed when session ends)
 wait "$TAIL_PID" 2>/dev/null || true
 kill "$MONITOR_PID" 2>/dev/null || true
-
-# Show final output
-echo ''
-echo '=== Build Session Ended ==='
-if [ -f "$LOG_FILE" ]; then
-    echo ''
-    echo 'Last 50 lines:'
-    tail -50 "$LOG_FILE"
-fi
-

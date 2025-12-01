@@ -1,5 +1,5 @@
-# KAS (Kernel Automation System) configuration for Yocto project
-# This file manages all Yocto layers, repositories, and build configuration
+# KAS (Kernel Automation System) configuration for Edge AI Yocto build
+# Minimal container-focused image for Jetson Orin Nano
 # See: https://kas.readthedocs.io/
 
 header:
@@ -7,9 +7,9 @@ header:
 
 machine: jetson-orin-nano-devkit-nvme
 distro: poky
+
 target:
-  - core-image-weston
-  - core-image-weston:do_populate_sdk
+  - edge-ai-image
 
 repos:
   poky:
@@ -35,66 +35,47 @@ repos:
     layers:
       .:
 
+  meta-virtualization:
+    url: https://git.yoctoproject.org/meta-virtualization
+    branch: scarthgap
+    layers:
+      .:
+
+  meta-edge-secure:
+    path: ../edge-ai/firmware/yocto/meta-edge-secure
+
 local_conf_header:
 
   tegra-config: |
-    # Use Tegraflash format for flashing NVMe
     IMAGE_CLASSES += "image_types_tegra"
     IMAGE_FSTYPES = "tegraflash"
 
-    DISTRO_FEATURES:append = " wayland opengl"
-
-    # Enable debug-tweaks for serial console
-    EXTRA_IMAGE_FEATURES += "debug-tweaks"
+    # NVIDIA GPU drivers on host (required for container GPU passthrough)
+    IMAGE_INSTALL:append = " nvgpu-libs"
 
     BB_NUMBER_THREADS = "8"
     PARALLEL_MAKE = "-j8"
 
-    # NV GPU drivers (mandatory even if userland lives in containers)
-    IMAGE_INSTALL:append = " nvgpu-libs"
-
   container-runtime: |
-    # Install Docker as container runtime
-    DISTRO_FEATURES:append = " virtualization"
-    IMAGE_INSTALL:append = " docker docker-contrib"
+    DISTRO_FEATURES:append = " virtualization systemd"
+    DISTRO_FEATURES_BACKFILL_CONSIDERED:append = " sysvinit"
+    VIRTUAL-RUNTIME_init_manager = "systemd"
 
-    # Enable Docker daemon at boot
-    SYSTEMD_AUTO_ENABLE:append = " docker.service"
-
-    # NVIDIA Container Runtime (for CUDA inside containers)
+    # NVIDIA Container Runtime
     IMAGE_INSTALL:append = " nvidia-container-runtime"
     IMAGE_INSTALL:append = " libnvidia-container-tools libnvidia-container1"
-    IMAGE_INSTALL:append = " libnvidia-container-dev"
 
-    # Allow container pull/provisioning
-    IMAGE_INSTALL:append = " ca-certificates curl"
+  network-config: |
+    # NetworkManager for reliable networking
+    PACKAGECONFIG:append:pn-networkmanager = " modemmanager ppp"
 
-  bootstrap-runtime: |
-    # Items needed for first-boot provisioning script
-    IMAGE_INSTALL:append = " bash openssh rsync util-linux"
+    # Enable resolved for DNS
+    PACKAGECONFIG:append:pn-systemd = " resolved"
 
-    # Directory for provisioning state
-    IMAGE_INSTALL:append = " e2fsprogs-mke2fs"
-
-    # TPM (optional but recommended for key storage)
-    IMAGE_INSTALL:append = " tpm2-tss tpm2-tools"
-
-  sdk-config: |
-    TOOLCHAIN_HOST_TASK:append = " nativesdk-cmake nativesdk-ninja"
-    TOOLCHAIN_TARGET_TASK:append = " tegra-mmapi-dev libstdc++-dev"
-
-  system-config: |
-    # Set hostname
-    hostname:pn-base-files = "edge-ai"
-
-    # Create writable data partition mount points
-    ROOTFS_POSTPROCESS_COMMAND += "create_data_dirs; "
-
-    create_data_dirs () {
-        install -d ${IMAGE_ROOTFS}/data
-        install -d ${IMAGE_ROOTFS}/var/lib/docker
-        touch ${IMAGE_ROOTFS}/data/need_provisioning
-    }
+  security-config: |
+    # Secure boot preparation (placeholder - keys added during signing)
+    # TEGRA_SIGNING_KEY will be set via environment for secure builds
+    # For now, build unsigned images
 
 bblayers_conf_header:
   layers-config: |
