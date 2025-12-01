@@ -85,6 +85,7 @@ interface FlashStatus {
     running: boolean;
     elapsed?: string;
     elapsedSeconds?: number; // Total seconds for client-side incrementing
+    usbDeviceDetected?: boolean;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -137,27 +138,15 @@ export function activate(context: vscode.ExtensionContext) {
             }),
             vscode.commands.registerCommand('yocto-builder.flashStart', () => {
                 outputChannel.appendLine('Command: flashStart');
-                runCommand('make firmware-controller-flash-usb C=steamdeck', 'Yocto Builder - Flash USB Start');
+                runCommand('make firmware-controller-flash C=steamdeck', 'Yocto Builder - Flash Start');
             }),
-            vscode.commands.registerCommand('yocto-builder.flashUsbWatch', () => {
-                outputChannel.appendLine('Command: flashUsbWatch');
-                runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash USB Watch');
+            vscode.commands.registerCommand('yocto-builder.flashWatch', () => {
+                outputChannel.appendLine('Command: flashWatch');
+                runCommand('make firmware-controller-flash-watch C=steamdeck', 'Yocto Builder - Flash Watch');
             }),
-            vscode.commands.registerCommand('yocto-builder.flashUsbTerminate', () => {
-                outputChannel.appendLine('Command: flashUsbTerminate');
-                runCommand('make firmware-controller-flash-usb-terminate C=steamdeck', 'Yocto Builder - Flash USB Terminate');
-            }),
-            vscode.commands.registerCommand('yocto-builder.flashSdcardStart', () => {
-                outputChannel.appendLine('Command: flashSdcardStart');
-                runCommand('make firmware-controller-flash-sdcard C=steamdeck', 'Yocto Builder - Flash SD Card Start');
-            }),
-            vscode.commands.registerCommand('yocto-builder.flashSdcardWatch', () => {
-                outputChannel.appendLine('Command: flashSdcardWatch');
-                runCommand('make firmware-controller-flash-sdcard-watch C=steamdeck', 'Yocto Builder - Flash SD Card Watch');
-            }),
-            vscode.commands.registerCommand('yocto-builder.flashSdcardTerminate', () => {
-                outputChannel.appendLine('Command: flashSdcardTerminate');
-                runCommand('make firmware-controller-flash-sdcard-terminate C=steamdeck', 'Yocto Builder - Flash SD Card Terminate');
+            vscode.commands.registerCommand('yocto-builder.flashTerminate', () => {
+                outputChannel.appendLine('Command: flashTerminate');
+                runCommand('make firmware-controller-flash-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
             }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
@@ -374,27 +363,18 @@ class YoctoBuilderPanel {
                         break;
                     case 'flashStart':
                         const flashMode = message.mode || 'bootloader';
-                        const flashCommand = `make firmware-controller-flash-usb C=steamdeck MODE=${flashMode}`;
-                        runCommand(flashCommand, 'Yocto Builder - Flash USB Start');
+                        const flashCommand = `make firmware-controller-flash C=steamdeck MODE=${flashMode}`;
+                        runCommand(flashCommand, 'Yocto Builder - Flash Start');
                         break;
-                    case 'toggleFlashUsbMode':
-                        this._context.globalState.update('flashUsbMode', message.value || 'bootloader');
+                    case 'toggleFlashMode':
+                        this._context.globalState.update('flashMode', message.value || 'bootloader');
                         this.update();
                         break;
-                    case 'flashUsbWatch':
-                        runCommand('make firmware-controller-flash-usb-watch C=steamdeck', 'Yocto Builder - Flash USB Watch');
+                    case 'flashWatch':
+                        runCommand('make firmware-controller-flash-watch C=steamdeck', 'Yocto Builder - Flash Watch');
                         break;
-                    case 'flashUsbTerminate':
-                        runCommand('make firmware-controller-flash-usb-terminate C=steamdeck', 'Yocto Builder - Flash USB Terminate');
-                        break;
-                    case 'flashSdcardStart':
-                        runCommand('make firmware-controller-flash-sdcard C=steamdeck', 'Yocto Builder - Flash SD Card Start');
-                        break;
-                    case 'flashSdcardWatch':
-                        runCommand('make firmware-controller-flash-sdcard-watch C=steamdeck', 'Yocto Builder - Flash SD Card Watch');
-                        break;
-                    case 'flashSdcardTerminate':
-                        runCommand('make firmware-controller-flash-sdcard-terminate C=steamdeck', 'Yocto Builder - Flash SD Card Terminate');
+                    case 'flashTerminate':
+                        runCommand('make firmware-controller-flash-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
                         break;
                     case 'toggleStopOnComplete':
                         // Store preference locally (works even when instance is not running)
@@ -509,12 +489,11 @@ class YoctoBuilderPanel {
         }
 
         // Run status checks in parallel to reduce delay
-        const [instanceStatus, buildStatus, controllerStatus, flashSdcardStatus, flashUsbStatus] = await Promise.all([
+        const [instanceStatus, buildStatus, controllerStatus, flashStatus] = await Promise.all([
             this.getInstanceStatus(workspaceFolder.uri.fsPath),
             this.getBuildStatus(workspaceFolder.uri.fsPath),
             this.getControllerStatus(workspaceFolder.uri.fsPath),
-            this.getFlashSdcardStatus(workspaceFolder.uri.fsPath),
-            this.getFlashUsbStatus(workspaceFolder.uri.fsPath)
+            this.getFlashStatus(workspaceFolder.uri.fsPath)
         ]);
 
         // Read HTML template
@@ -622,57 +601,56 @@ class YoctoBuilderPanel {
         html = html.replace(/\{\{CONTROLLER_HOST\}\}/g, this.escapeHtml(controllerStatus.host || 'N/A'));
         html = html.replace(/\{\{CONTROLLER_STATUS_TEXT\}\}/g, controllerStatus.reachable ? 'Reachable' : 'Unreachable');
 
-        // Flash SD card status section
-        html = html.replace(/\{\{FLASH_SDCARD_STATUS_CLASS\}\}/g, flashSdcardStatus.running ? 'running' : 'stopped');
-        html = html.replace(/\{\{FLASH_SDCARD_STATUS_TEXT\}\}/g, flashSdcardStatus.running ? 'Running' : 'Not Running');
-        html = html.replace(/\{\{FLASH_SDCARD_START_DISABLED\}\}/g, flashSdcardStatus.running ? 'disabled' : '');
-        html = html.replace(/\{\{FLASH_SDCARD_WATCH_DISABLED\}\}/g, !flashSdcardStatus.running ? 'disabled' : '');
-        html = html.replace(/\{\{FLASH_SDCARD_TERMINATE_DISABLED\}\}/g, !flashSdcardStatus.running ? 'disabled' : '');
+        // Flash status section
+        html = html.replace(/\{\{FLASH_STATUS_CLASS\}\}/g, flashStatus.running ? 'running' : 'stopped');
+        html = html.replace(/\{\{FLASH_STATUS_TEXT\}\}/g, flashStatus.running ? 'Running' : 'Not Running');
+        const usbDeviceDetected = flashStatus.usbDeviceDetected === true;
+        const flashStartDisabled = flashStatus.running || !usbDeviceDetected;
+        html = html.replace(/\{\{FLASH_START_DISABLED\}\}/g, flashStartDisabled ? 'disabled' : '');
+        html = html.replace(/\{\{FLASH_WATCH_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
+        html = html.replace(/\{\{FLASH_TERMINATE_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
 
-        // Flash SD card elapsed time section
-        const flashSdcardElapsedHtml = flashSdcardStatus.elapsed ? `
+        // Flash elapsed time section
+        const flashElapsedHtml = flashStatus.elapsed ? `
         <div class="info-row">
             <span class="info-label">Elapsed:</span>
-            <span id="flashSdcardElapsedTime" data-elapsed-seconds="${flashSdcardStatus.elapsedSeconds || 0}" data-is-running="${flashSdcardStatus.running}">${flashSdcardStatus.elapsed}</span>
+            <span id="flashElapsedTime" data-elapsed-seconds="${flashStatus.elapsedSeconds || 0}" data-is-running="${flashStatus.running}">${flashStatus.elapsed}</span>
         </div>
         ` : '';
-        html = html.replace(/\{\{FLASH_SDCARD_ELAPSED_TIME\}\}/g, flashSdcardElapsedHtml);
+        html = html.replace(/\{\{FLASH_ELAPSED_TIME\}\}/g, flashElapsedHtml);
 
-        // Flash USB status section
-        html = html.replace(/\{\{FLASH_USB_STATUS_CLASS\}\}/g, flashUsbStatus.running ? 'running' : 'stopped');
-        html = html.replace(/\{\{FLASH_USB_STATUS_TEXT\}\}/g, flashUsbStatus.running ? 'Running' : 'Not Running');
-        html = html.replace(/\{\{FLASH_USB_START_DISABLED\}\}/g, flashUsbStatus.running ? 'disabled' : '');
-        html = html.replace(/\{\{FLASH_USB_WATCH_DISABLED\}\}/g, !flashUsbStatus.running ? 'disabled' : '');
-        html = html.replace(/\{\{FLASH_USB_TERMINATE_DISABLED\}\}/g, !flashUsbStatus.running ? 'disabled' : '');
-
-        // Flash USB elapsed time section
-        const flashUsbElapsedHtml = flashUsbStatus.elapsed ? `
+        // Flash device status section
+        const flashDeviceHtml = flashStatus.usbDeviceDetected !== undefined ? `
         <div class="info-row">
-            <span class="info-label">Elapsed:</span>
-            <span id="flashUsbElapsedTime" data-elapsed-seconds="${flashUsbStatus.elapsedSeconds || 0}" data-is-running="${flashUsbStatus.running}">${flashUsbStatus.elapsed}</span>
+            <span class="info-label">USB Device:</span>
+            <span style="display: flex; align-items: center; gap: 6px;">
+                ${flashStatus.usbDeviceDetected ? '<div class="status-indicator running" style="width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;"></div>' : '<div class="status-indicator stopped" style="width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;"></div>'}
+                ${flashStatus.usbDeviceDetected ? 'NVIDIA device detected' : 'No NVIDIA device'}
+            </span>
         </div>
         ` : '';
-        html = html.replace(/\{\{FLASH_USB_ELAPSED_TIME\}\}/g, flashUsbElapsedHtml);
+        html = html.replace(/\{\{FLASH_DEVICE_STATUS\}\}/g, flashDeviceHtml);
 
-        // Flash USB mode toggle (bootloader vs rootfs)
-        const flashUsbMode = this._context.globalState.get<string>('flashUsbMode', 'bootloader');
-        const flashUsbRunning = flashUsbStatus.running;
-        const flashUsbModeHtml = `
+        // Flash mode toggle (bootloader vs rootfs)
+        const flashMode = this._context.globalState.get<string>('flashMode', 'bootloader');
+        const flashRunning = flashStatus.running;
+        const modeDisabled = flashRunning || !usbDeviceDetected;
+        const flashModeHtml = `
         <div class="stop-on-complete" style="margin-top: 8px;">
             <label style="display: block; margin-bottom: 4px; font-weight: bold;">Flash Target:</label>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: ${flashUsbRunning ? 'not-allowed' : 'pointer'}; opacity: ${flashUsbRunning ? '0.6' : '1'};">
-                <input type="radio" name="flashUsbMode" value="bootloader" ${flashUsbMode === 'bootloader' ? 'checked' : ''}
-                    ${flashUsbRunning ? 'disabled' : ''} onchange="updateFlashUsbMode('bootloader')">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: ${modeDisabled ? 'not-allowed' : 'pointer'}; opacity: ${modeDisabled ? '0.6' : '1'};">
+                <input type="radio" name="flashMode" value="bootloader" ${flashMode === 'bootloader' ? 'checked' : ''}
+                    ${modeDisabled ? 'disabled' : ''} onchange="updateFlashMode('bootloader')">
                 Bootloader (SPI)
             </label>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: ${flashUsbRunning ? 'not-allowed' : 'pointer'}; opacity: ${flashUsbRunning ? '0.6' : '1'};">
-                <input type="radio" name="flashUsbMode" value="rootfs" ${flashUsbMode === 'rootfs' ? 'checked' : ''}
-                    ${flashUsbRunning ? 'disabled' : ''} onchange="updateFlashUsbMode('rootfs')">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: ${modeDisabled ? 'not-allowed' : 'pointer'}; opacity: ${modeDisabled ? '0.6' : '1'};">
+                <input type="radio" name="flashMode" value="rootfs" ${flashMode === 'rootfs' ? 'checked' : ''}
+                    ${modeDisabled ? 'disabled' : ''} onchange="updateFlashMode('rootfs')">
                 Rootfs (NVMe)
             </label>
         </div>
         `;
-        html = html.replace(/\{\{FLASH_USB_MODE_TOGGLE\}\}/g, flashUsbModeHtml);
+        html = html.replace(/\{\{FLASH_MODE_TOGGLE\}\}/g, flashModeHtml);
 
         return html;
     }
@@ -838,18 +816,6 @@ class YoctoBuilderPanel {
         return status;
     }
 
-    private async getFlashSdcardStatus(workspacePath: string): Promise<FlashStatus> {
-        try {
-            const { stdout } = await execWithTimeout('make firmware-controller-flash-sdcard-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
-            return this.parseFlashStatusOutput(stdout);
-        } catch (error: any) {
-            if (error?.stdout) {
-                return this.parseFlashStatusOutput(error.stdout);
-            }
-            return { running: false };
-        }
-    }
-
     private parseFlashStatusOutput(stdout: string): FlashStatus {
         const status: FlashStatus = {
             running: stdout.includes('Flash session is running')
@@ -865,10 +831,30 @@ class YoctoBuilderPanel {
         return status;
     }
 
-    private async getFlashUsbStatus(workspacePath: string): Promise<FlashStatus> {
+    private async getFlashStatus(workspacePath: string): Promise<FlashStatus> {
         try {
-            const { stdout } = await execWithTimeout('make firmware-controller-flash-usb-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
-            return this.parseFlashStatusOutput(stdout);
+            const { stdout } = await execWithTimeout('make firmware-controller-flash-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
+            const status = this.parseFlashStatusOutput(stdout);
+
+            // Check USB device status on controller
+            try {
+                const controllerStatus = await this.getControllerStatus(workspacePath);
+                if (controllerStatus.reachable) {
+                    try {
+                        const { stdout: usbStdout } = await execWithTimeout(
+                            'make firmware-controller-usb-device C=steamdeck',
+                            { cwd: workspacePath, timeout: 5000 }
+                        );
+                        status.usbDeviceDetected = usbStdout.trim() === 'detected';
+                    } catch (usbError) {
+                        status.usbDeviceDetected = false;
+                    }
+                }
+            } catch (controllerError) {
+                // If we can't check controller, USB device status is unknown
+            }
+
+            return status;
         } catch (error: any) {
             if (error?.stdout) {
                 return this.parseFlashStatusOutput(error.stdout);

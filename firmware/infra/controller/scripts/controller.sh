@@ -96,6 +96,19 @@ list_all() {
     done
 }
 
+check_usb_device() {
+    require_controller "${1:-}"
+    local name="$1"
+    get_controller_info "$name"
+    check_controller_connection "$name"
+
+    if controller_ssh "$name" "lsusb | grep -qi nvidia" 2>/dev/null; then
+        echo "detected"
+    else
+        echo "not_detected"
+    fi
+}
+
 case "${1:-}" in
     status) show_status "${2:-}" ;;
     setup) run_setup "${2:-}" ;;
@@ -103,5 +116,6 @@ case "${1:-}" in
     ssh-keys) setup_ssh_keys "${2:-}" ;;
     ssh) shift; ssh_to_controller "$@" ;;
     list) list_all ;;
-    *) echo "Usage: $0 [list|status|setup|deploy|ssh-keys|ssh] [controller]"; exit 1 ;;
+    usb-device) check_usb_device "${2:-}" ;;
+    *) echo "Usage: $0 [list|status|setup|deploy|ssh-keys|ssh|usb-device] [controller]"; exit 1 ;;
 esac

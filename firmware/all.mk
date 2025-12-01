@@ -67,6 +67,9 @@ firmware-controller-list: ## List controllers
 firmware-controller-status: ## Show controller status
 	@$(CONTROLLER_DIR)/scripts/controller.sh status $(C)
 
+firmware-controller-usb-device: ## Check for NVIDIA USB device on controller
+	@$(CONTROLLER_DIR)/scripts/controller.sh usb-device $(C)
+
 firmware-controller-setup: ## Set up controller
 	@$(CONTROLLER_DIR)/scripts/controller.sh ssh-keys $(C)
 	@$(CONTROLLER_DIR)/scripts/controller.sh setup $(C)
@@ -78,28 +81,15 @@ firmware-controller-deploy: ## Deploy scripts to controller
 firmware-controller-push-tegraflash: ## Push tegraflash to controller
 	@$(CONTROLLER_DIR)/scripts/push-tegraflash.sh
 
-firmware-controller-flash-usb: firmware-controller-deploy ## Flash Jetson via USB (MODE=bootloader|rootfs)
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh start $(MODE)
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh watch
+firmware-controller-flash: firmware-controller-deploy ## Flash Jetson via USB (MODE=bootloader|rootfs)
+	@$(CONTROLLER_DIR)/scripts/flash.sh start $(MODE)
+	@$(CONTROLLER_DIR)/scripts/flash.sh watch
 
-firmware-controller-flash-usb-status: ## Check USB flash status
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh status
+firmware-controller-flash-status: ## Check flash status
+	@$(CONTROLLER_DIR)/scripts/flash.sh status
 
-firmware-controller-flash-usb-watch: ## Tail USB flash log
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh watch
+firmware-controller-flash-watch: ## Tail flash log
+	@$(CONTROLLER_DIR)/scripts/flash.sh watch
 
-firmware-controller-flash-usb-terminate: ## Terminate USB flash session
-	@$(CONTROLLER_DIR)/scripts/flash-usb.sh terminate
-
-firmware-controller-flash-sdcard: firmware-controller-deploy ## Flash SD card (DEVICE=/dev/sdX)
-	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh start "$(DEVICE)"
-	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh watch
-
-firmware-controller-flash-sdcard-status: ## Check SD card flash status
-	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh status
-
-firmware-controller-flash-sdcard-watch: ## Tail SD card flash log
-	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh watch
-
-firmware-controller-flash-sdcard-terminate: ## Terminate SD card flash session
-	@$(CONTROLLER_DIR)/scripts/flash-sdcard.sh terminate
+firmware-controller-flash-terminate: ## Terminate flash session
+	@$(CONTROLLER_DIR)/scripts/flash.sh terminate

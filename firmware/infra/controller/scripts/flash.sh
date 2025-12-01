@@ -25,7 +25,7 @@ start_flash() {
         exit 1
     }
 
-    is_flash_running && { log_error "Flash already running. Use 'make firmware-controller-flash-usb-terminate' first"; exit 1; }
+    is_flash_running && { log_error "Flash already running. Use 'make firmware-controller-flash-terminate' first"; exit 1; }
 
     log_info "=== USB Flash Setup ==="
     [ "$FLASH_MODE" = "rootfs" ] && log_info "Mode: Rootfs (NVMe)" \
@@ -56,8 +56,8 @@ start_flash() {
 
     log_info "Using: $(basename "$TEGRAFLASH_ARCHIVE")"
 
-    local_script="$SCRIPT_DIR/on-controller/flash-usb-device.sh"
-    remote_script="$CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller/flash-usb-device.sh"
+    local_script="$SCRIPT_DIR/on-controller/flash-device.sh"
+    remote_script="$CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller/flash-device.sh"
     watch_script="$CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller/watch-flash-usb.sh"
 
     controller_ssh "$CONTROLLER" "mkdir -p $CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller"
@@ -84,7 +84,7 @@ start_flash() {
     is_flash_running || { log_error "Flash failed to start"; ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}" "tail -50 $LOG_FILE" 2>/dev/null || true; exit 1; }
 
     log_success "Flash started in persistent session"
-    log_info "Use 'make firmware-controller-flash-usb-watch' to view progress"
+    log_info "Use 'make firmware-controller-flash-watch' to view progress"
 }
 
 check_status() {
@@ -93,7 +93,7 @@ check_status() {
     if is_flash_running; then
         echo "Flash session is running"
         local elapsed
-        elapsed=$(controller_ssh "$CONTROLLER" "pgrep -f 'doflash.sh\|doexternal.sh\|flash-usb-device.sh' | head -1 | \
+        elapsed=$(controller_ssh "$CONTROLLER" "pgrep -f 'doflash.sh\|doexternal.sh\|flash-device.sh' | head -1 | \
             xargs -I {} ps -o etime= -p {} 2>/dev/null | tr -d ' '" 2>/dev/null || echo "")
         [ -n "$elapsed" ] && echo "Elapsed: $elapsed" || echo "Flash starting..."
         controller_ssh "$CONTROLLER" "tail -5 $LOG_FILE 2>/dev/null" || true
@@ -104,7 +104,7 @@ check_status() {
 
 watch_flash() {
     check_controller_connection "$CONTROLLER"
-    is_flash_running || { log_error "No flash session. Start with 'make firmware-controller-flash-usb'"; exit 1; }
+    is_flash_running || { log_error "No flash session. Start with 'make firmware-controller-flash'"; exit 1; }
     log_info "Watching flash log..."
     controller_ssh "$CONTROLLER" "bash $CURRENT_CONTROLLER_BASE_DIR/scripts/on-controller/watch-flash-usb.sh" || {
         log_info "Watch ended (flash continues in background)"; exit 0

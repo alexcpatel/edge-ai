@@ -7,7 +7,9 @@ header:
 
 machine: jetson-orin-nano-devkit-nvme
 distro: poky
-target: core-image-sato-dev
+target:
+  - core-image-weston
+  - core-image-weston:do_populate_sdk
 
 repos:
   poky:
@@ -18,29 +20,63 @@ repos:
       meta-poky:
       meta-yocto-bsp:
 
+  meta-openembedded:
+    url: https://github.com/openembedded/meta-openembedded.git
+    branch: scarthgap
+    layers:
+      meta-oe:
+      meta-python:
+      meta-networking:
+      meta-multimedia:
+
   meta-tegra:
     url: https://github.com/OE4T/meta-tegra.git
     branch: scarthgap
     layers:
       .:
 
+  meta-ros:
+    url: https://github.com/ros/meta-ros.git
+    branch: scarthgap
+    layers:
+      meta-ros-common:
+      meta-ros2:
+      meta-ros2-jazzy:
+
 local_conf_header:
   tegra-config: |
-    # Local configuration additions
-    DISTRO_FEATURES = "x11 opengl "
-
     IMAGE_CLASSES += "image_types_tegra"
     IMAGE_FSTYPES = "tegraflash"
 
-    TEGRA_FLASH_DEFAULT_DEVICE = "nvme0n1"
-    TEGRA_FLASH_USE_EXTERNAL_STORAGE = "1"
-
-    TEGRA_FLASH_USE_INITRD = "1"
+    # Graphics support for DeepStream display output (Wayland/Weston)
+    DISTRO_FEATURES:append = " wayland opengl"
 
     EXTRA_IMAGE_FEATURES += "debug-tweaks"
 
     BB_NUMBER_THREADS = "8"
     PARALLEL_MAKE = "-j8"
+
+  cuda-config: |
+    # Tegra Multimedia API and GStreamer plugins (hardware access)
+    IMAGE_INSTALL:append = " tegra-mmapi"
+    IMAGE_INSTALL:append = " gstreamer1.0-plugins-nvvideo4linux2"
+
+    # Note: cudnn, tensorrt, deepstream require NVIDIA SDK Manager download
+    # Install post-flash or set NVIDIA_DEVNET_MIRROR in local.conf
+
+  sdk-config: |
+    # SDK configuration (cross-compilation toolchain)
+    TOOLCHAIN_HOST_TASK:append = " nativesdk-cmake nativesdk-ninja"
+    TOOLCHAIN_TARGET_TASK:append = " tegra-mmapi-dev libstdc++-dev"
+
+  runtime-deps: |
+    # Minimal runtime for remote access and post-install package management
+    IMAGE_INSTALL:append = " python3 python3-pip"
+    IMAGE_INSTALL:append = " openssh-sftp-server rsync"
+
+  system-config: |
+    # Hostname: edge-ai
+    hostname:pn-base-files = "edge-ai"
 
 bblayers_conf_header:
   layers-config: |
