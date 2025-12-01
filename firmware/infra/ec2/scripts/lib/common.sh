@@ -2,26 +2,27 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-EC2_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+# Paths
+COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$COMMON_SH_DIR/../../../../.." && pwd)"
 
-source "$EC2_DIR/config/aws-config.sh"
-source "$REPO_ROOT/firmware/yocto/config/yocto-config.sh"
+# Load config
+source "$COMMON_SH_DIR/../../config/config.sh"
 
+# Derived paths (on EC2)
 export REMOTE_SOURCE_DIR="${YOCTO_DIR}/edge-ai"
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
-log_info() { echo -e "${YELLOW}$*${NC}"; }
-log_success() { echo -e "${GREEN}$*${NC}"; }
-log_error() { echo -e "${RED}$*${NC}"; }
+# Logging
+log_info() { echo -e "\033[1;33m$*\033[0m"; }
+log_success() { echo -e "\033[0;32m$*\033[0m"; }
+log_error() { echo -e "\033[0;31m$*\033[0m"; }
 
+# AWS helpers
 check_aws_creds() {
     aws sts get-caller-identity >/dev/null 2>&1 || { log_error "AWS credentials not configured"; exit 1; }
 }
 
 INSTANCE_CACHE_DIR="${HOME}/.ssh/ec2-instance-cache"
-CACHE_MAX_AGE=300
 
 get_instance_id() {
     local cache_file="${INSTANCE_CACHE_DIR}/instance_id"
@@ -30,7 +31,7 @@ get_instance_id() {
 
     if [ -f "$cache_file" ] && [ -f "$cache_time" ]; then
         local age=$(($(date +%s) - $(cat "$cache_time" 2>/dev/null || echo 0)))
-        if [ $age -lt $CACHE_MAX_AGE ]; then
+        if [ $age -lt 300 ]; then
             local cached=$(cat "$cache_file" 2>/dev/null || echo "")
             [ -n "$cached" ] && [ "$cached" != "None" ] && { echo "$cached"; return 0; }
         fi

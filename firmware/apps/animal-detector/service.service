@@ -1,0 +1,23 @@
+[Unit]
+Description=DeepStream Animal Detector
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+ExecStart=/usr/bin/docker run --rm \
+  --name animal-detector \
+  --gpus all \
+  --network host \
+  -v /data/apps/animal-detector/app:/workspace/app:ro \
+  -v /data/apps/animal-detector/models:/workspace/models:ro \
+  edge/animal-detector:latest
+ExecStop=/usr/bin/docker stop animal-detector
+
+[Install]
+WantedBy=multi-user.target
+
+

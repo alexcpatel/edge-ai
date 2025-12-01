@@ -1,16 +1,11 @@
 # AWS IoT Fleet Provisioning claim certificates
 # Baked into rootfs for zero-touch device provisioning
-#
-# Claim certs are fetched from SSM Parameter Store during EC2 build
-# See: firmware/infra/ec2/scripts/on-ec2/run-build.sh
 
 SUMMARY = "AWS IoT Fleet Provisioning claim certificates"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
-# Source from claim-certs directory (populated by run-build.sh from SSM)
-FILESEXTRAPATHS:prepend := "${THISDIR}/../../../claim-certs:"
-
+# Source from edge-claim-certs/ subdirectory (populated by run-build.sh from SSM)
 SRC_URI = " \
     file://claim.crt \
     file://claim.key \

@@ -18,14 +18,9 @@ LOG_FILE="/tmp/yocto-build.log"
 # Start fresh log
 echo "Build started at $(date)" > "$LOG_FILE"
 
-# Source config if available
-if [ -f "$HOME/edge-ai/build/yocto/config/yocto-config.sh" ]; then
-    source "$HOME/edge-ai/build/yocto/config/yocto-config.sh"
-fi
-
 YOCTO_DIR="${YOCTO_DIR:-$HOME/yocto-tegra}"
 SOURCE_DIR="${YOCTO_DIR}/edge-ai"
-CLAIM_CERTS_DIR="$SOURCE_DIR/firmware/yocto/claim-certs"
+CLAIM_CERTS_DIR="$SOURCE_DIR/firmware/yocto/meta-edge-secure/recipes-core/claim-certs/edge-claim-certs"
 
 log_info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; }

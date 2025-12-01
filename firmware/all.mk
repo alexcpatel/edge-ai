@@ -2,7 +2,7 @@
 
 EC2_DIR := firmware/infra/ec2
 CONTROLLER_DIR := firmware/infra/controller
-YOCTO_DIR := firmware/yocto
+APPS_SCRIPTS_DIR := firmware/apps/scripts
 
 # EC2 management
 firmware-ec2-setup: ## Run EC2 setup
@@ -93,3 +93,16 @@ firmware-controller-flash-watch: ## Tail flash log
 
 firmware-controller-flash-terminate: ## Terminate flash session
 	@$(CONTROLLER_DIR)/scripts/flash.sh terminate
+
+# App management on device
+firmware-app-deploy: ## Deploy app container to device (APP=, DEVICE_HOST=, DEVICE_USER=)
+	@$(APPS_SCRIPTS_DIR)/app-deploy.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+
+firmware-app-stop: ## Stop and disable app on device (APP=, DEVICE_HOST=, DEVICE_USER=)
+	@$(APPS_SCRIPTS_DIR)/app-stop.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+
+firmware-app-logs: ## Tail app logs on device (APP=, DEVICE_HOST=, DEVICE_USER=)
+	@$(APPS_SCRIPTS_DIR)/app-logs.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+
+firmware-device-check: ## Check that Jetson is reachable (DEVICE_HOST=, DEVICE_USER=)
+	@$(APPS_SCRIPTS_DIR)/device-check.sh "$(DEVICE_HOST)" "$(DEVICE_USER)"

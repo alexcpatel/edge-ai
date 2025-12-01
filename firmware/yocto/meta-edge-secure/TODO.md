@@ -36,7 +36,7 @@
 
 ### Build & Flash
 
-- [ ] Test build on EC2
+- [x] Test build on EC2
 - [ ] Verify tegraflash output includes correct partitions
 - [ ] Create /data partition during flash (may need flash script update)
 
