@@ -28,6 +28,13 @@ repos:
       meta-python:
       meta-networking:
       meta-multimedia:
+      meta-filesystems:
+
+  meta-security:
+    url: https://git.yoctoproject.org/meta-security
+    branch: scarthgap
+    layers:
+      .:
 
   meta-tegra:
     url: https://github.com/OE4T/meta-tegra.git
@@ -43,6 +50,8 @@ repos:
 
   meta-edge-secure:
     path: ../edge-ai/firmware/yocto/meta-edge-secure
+    layers:
+      .:
 
 local_conf_header:
 
@@ -50,20 +59,17 @@ local_conf_header:
     IMAGE_CLASSES += "image_types_tegra"
     IMAGE_FSTYPES = "tegraflash"
 
-    # NVIDIA GPU drivers on host (required for container GPU passthrough)
-    IMAGE_INSTALL:append = " nvgpu-libs"
-
     BB_NUMBER_THREADS = "8"
     PARALLEL_MAKE = "-j8"
 
   container-runtime: |
-    DISTRO_FEATURES:append = " virtualization systemd"
+    DISTRO_FEATURES:append = " virtualization systemd usrmerge"
     DISTRO_FEATURES_BACKFILL_CONSIDERED:append = " sysvinit"
     VIRTUAL-RUNTIME_init_manager = "systemd"
 
-    # NVIDIA Container Runtime
-    IMAGE_INSTALL:append = " nvidia-container-runtime"
-    IMAGE_INSTALL:append = " libnvidia-container-tools libnvidia-container1"
+    # NVIDIA Container Runtime - add later when packages are available
+    # IMAGE_INSTALL:append = " nvidia-container-runtime"
+    # IMAGE_INSTALL:append = " libnvidia-container-tools libnvidia-container1"
 
   network-config: |
     # NetworkManager for reliable networking

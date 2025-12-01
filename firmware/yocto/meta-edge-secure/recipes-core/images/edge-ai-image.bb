@@ -15,20 +15,12 @@ IMAGE_INSTALL = " \
 # Container runtime
 IMAGE_INSTALL += " \
     docker \
-    docker-contrib \
-    nvidia-container-runtime \
-    libnvidia-container-tools \
-    libnvidia-container1 \
 "
-
-# NVIDIA drivers added via kas.yml tegra-config
 
 # Networking
 IMAGE_INSTALL += " \
     networkmanager \
     wpa-supplicant \
-    openssh-server \
-    openssh-sftp-server \
     ca-certificates \
     curl \
     wget \
@@ -54,11 +46,11 @@ IMAGE_INSTALL += " \
     volatile-binds \
 "
 
-# TPM support (optional but recommended)
-IMAGE_INSTALL += " \
-    tpm2-tss \
-    tpm2-tools \
-"
+# TPM support (deferred until correct recipes are confirmed)
+# IMAGE_INSTALL += " \
+#     tpm2-tss \
+#     tpm2-tools \
+# "
 
 # Debug utilities (remove for production)
 IMAGE_INSTALL += " \
