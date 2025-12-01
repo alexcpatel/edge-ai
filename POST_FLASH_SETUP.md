@@ -70,7 +70,7 @@ terraform init
 terraform apply
 
 # Then on each device, run provisioning
-cd iot
+cd iot/python
 pip3 install -e .
 edge-ai-iot provision
 ```
