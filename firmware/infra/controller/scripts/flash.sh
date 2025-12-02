@@ -2,7 +2,9 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+source "$SCRIPT_DIR/lib/common.sh"
+source "$REPO_ROOT/firmware/infra/ec2/scripts/lib/common.sh"
 
 CONTROLLER="${CONTROLLER:-steamdeck}"
 require_controller "$CONTROLLER"
@@ -17,6 +19,62 @@ is_flash_running() {
         "tmux has-session -t $SESSION 2>/dev/null" >/dev/null 2>&1
 }
 
+push_tegraflash() {
+    log_info "Syncing tegraflash from EC2 to controller..."
+
+    local ip
+    ip=$(get_instance_ip_or_exit)
+
+    local ARTIFACTS_DIR="$YOCTO_DIR/build/tmp/deploy/images/$YOCTO_MACHINE"
+    local ARCHIVE
+    ARCHIVE=$(ssh_cmd "$ip" "ls -t $ARTIFACTS_DIR/*.tegraflash.tar.gz 2>/dev/null | head -1" || echo "")
+
+    [ -z "$ARCHIVE" ] && { log_error "No tegraflash archive on EC2. Build first: make firmware-build"; exit 1; }
+
+    local ARCHIVE_NAME
+    ARCHIVE_NAME=$(basename "$ARCHIVE")
+    log_info "Found: $ARCHIVE_NAME"
+
+    controller_ssh "$CONTROLLER" "mkdir -p $CURRENT_CONTROLLER_BASE_DIR/tegraflash"
+    controller_ssh "$CONTROLLER" "rm -f $CURRENT_CONTROLLER_BASE_DIR/tegraflash/*.tegraflash.tar.gz"
+
+    local REMOTE_ARCHIVE="$CURRENT_CONTROLLER_BASE_DIR/tegraflash/$ARCHIVE_NAME"
+    local TMP_FILE
+    TMP_FILE=$(mktemp)
+    trap "rm -f $TMP_FILE" EXIT
+
+    log_info "Downloading from EC2..."
+    scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "${EC2_USER}@${ip}:${ARCHIVE}" "$TMP_FILE"
+
+    file "$TMP_FILE" | grep -q "gzip" || { log_error "Not a valid gzip archive"; exit 1; }
+
+    log_info "Uploading to controller..."
+    controller_rsync "$CONTROLLER" "$TMP_FILE" \
+        "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}:$REMOTE_ARCHIVE"
+
+    rm -f "$TMP_FILE"
+    trap - EXIT
+}
+
+wait_for_nvidia_device() {
+    log_info "Waiting for NVIDIA USB device on controller..."
+    log_info "(Connect Jetson via USB-C and put in recovery mode)"
+    
+    local count=0
+    while true; do
+        if controller_ssh "$CONTROLLER" "lsusb 2>/dev/null | grep -qi nvidia" 2>/dev/null; then
+            log_success "NVIDIA device detected"
+            return 0
+        fi
+        count=$((count + 1))
+        if [ $((count % 10)) -eq 0 ]; then
+            log_info "Still waiting... (${count}s)"
+        fi
+        sleep 1
+    done
+}
+
 start_flash() {
     FLASH_MODE="${1:-bootloader}"
     [ -z "$FLASH_MODE" ] && FLASH_MODE="bootloader"
@@ -27,17 +85,15 @@ start_flash() {
 
     is_flash_running && { log_error "Flash already running. Use 'make firmware-controller-flash-terminate' first"; exit 1; }
 
-    log_info "=== USB Flash Setup ==="
+    check_controller_connection "$CONTROLLER"
+
+    push_tegraflash
+
+    log_info "=== USB Flash ==="
     [ "$FLASH_MODE" = "rootfs" ] && log_info "Mode: Rootfs (NVMe)" \
         || log_info "Mode: Bootloader (SPI)"
-    echo ""
-    log_info "1. Connect Jetson to controller via USB-C"
-    log_info "2. Put Jetson in recovery mode (short FC_REC to GND, then power on)"
-    log_info "3. Verify: lsusb | grep -i nvidia"
-    echo ""
-    read -p "Press Enter when ready, Ctrl+C to cancel..."
 
-    check_controller_connection "$CONTROLLER"
+    wait_for_nvidia_device
 
     controller_ssh "$CONTROLLER" "command -v tmux >/dev/null 2>&1" || {
         log_error "tmux is not installed on controller. Run: make firmware-controller-setup C=$CONTROLLER"
@@ -47,7 +103,7 @@ start_flash() {
     TEGRAFLASH_ARCHIVE=$( (controller_ssh "$CONTROLLER" \
         "ls -t $CURRENT_CONTROLLER_BASE_DIR/tegraflash/*.tegraflash.tar.gz 2>/dev/null | head -1" || echo "") | tr -d '\r\n' | xargs)
 
-    [ -z "$TEGRAFLASH_ARCHIVE" ] && { log_error "No tegraflash archive. Run: make controller-push-tegraflash"; exit 1; }
+    [ -z "$TEGRAFLASH_ARCHIVE" ] && { log_error "No tegraflash archive found on controller"; exit 1; }
 
     controller_ssh "$CONTROLLER" "[ -f '$TEGRAFLASH_ARCHIVE' ]" || {
         log_error "Archive not found on controller: $TEGRAFLASH_ARCHIVE"

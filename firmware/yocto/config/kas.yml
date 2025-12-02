@@ -66,6 +66,12 @@ local_conf_header:
     DISTRO_FEATURES:append = " virtualization systemd usrmerge"
     DISTRO_FEATURES_BACKFILL_CONSIDERED:append = " sysvinit"
     VIRTUAL-RUNTIME_init_manager = "systemd"
+    VIRTUAL-RUNTIME_initscripts = ""
+
+    # Use native systemd units instead of SysV init scripts
+    PACKAGECONFIG:append:pn-docker = " systemd"
+    PACKAGECONFIG:remove:pn-docker = " sysvinit"
+    PACKAGECONFIG:append:pn-openssh = " systemd"
 
     # NVIDIA Container Runtime - add later when packages are available
     # IMAGE_INSTALL:append = " nvidia-container-runtime"
@@ -73,7 +79,7 @@ local_conf_header:
 
   network-config: |
     # NetworkManager for reliable networking
-    PACKAGECONFIG:append:pn-networkmanager = " modemmanager ppp"
+    PACKAGECONFIG:append:pn-networkmanager = " modemmanager ppp systemd"
 
     # Enable resolved for DNS
     PACKAGECONFIG:append:pn-systemd = " resolved"

@@ -19,17 +19,13 @@ EXTRACT_DIR="$CONTROLLER_BASE_DIR/tegraflash-extracted/$ARCHIVE_NAME"
 
 REQUIRED_SCRIPT=$( [ "$FLASH_MODE" = "rootfs" ] && echo "initrd-flash" || echo "doflash.sh" )
 
-if [ -f "$EXTRACT_DIR/$REQUIRED_SCRIPT" ]; then
-    echo "Using existing extraction"
-else
-    echo "Extracting to $EXTRACT_DIR..."
-    sudo rm -rf "$EXTRACT_DIR"
-    mkdir -p "$EXTRACT_DIR"
-    tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_DIR"
-    [ -f "$EXTRACT_DIR/$REQUIRED_SCRIPT" ] || { echo "$REQUIRED_SCRIPT not found"; exit 1; }
-    chmod +x "$EXTRACT_DIR"/*.sh 2>/dev/null || true
-    [ "$FLASH_MODE" = "rootfs" ] && chmod +x "$EXTRACT_DIR/initrd-flash" 2>/dev/null || true
-fi
+echo "Extracting to $EXTRACT_DIR..."
+sudo rm -rf "$EXTRACT_DIR"
+mkdir -p "$EXTRACT_DIR"
+tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_DIR"
+[ -f "$EXTRACT_DIR/$REQUIRED_SCRIPT" ] || { echo "$REQUIRED_SCRIPT not found"; exit 1; }
+chmod +x "$EXTRACT_DIR"/*.sh 2>/dev/null || true
+[ "$FLASH_MODE" = "rootfs" ] && chmod +x "$EXTRACT_DIR/initrd-flash" 2>/dev/null || true
 
 cd "$EXTRACT_DIR"
 
@@ -49,11 +45,11 @@ fi
 echo "Flashing ($FLASH_MODE)..."
 FLASH_EXIT=0
 if [ "$EUID" -ne 0 ]; then
-    sudo "$CMD" "${ARGS:-}" 2>&1 | tee -a "$LOG_FILE"
-    FLASH_EXIT="${PIPESTATUS[0]}"
+    sudo "$CMD" "${ARGS:-}" 2>&1
+    FLASH_EXIT="$?"
 else
-    "$CMD" "${ARGS:-}" 2>&1 | tee -a "$LOG_FILE"
-    FLASH_EXIT="${PIPESTATUS[0]}"
+    "$CMD" "${ARGS:-}" 2>&1
+    FLASH_EXIT="$?"
 fi
 
 if [ "$FLASH_EXIT" -eq 0 ]; then

@@ -25,8 +25,11 @@ controller_ssh "$CONTROLLER" "mkdir -p $CURRENT_CONTROLLER_BASE_DIR/tegraflash"
 
 REMOTE_ARCHIVE="$CURRENT_CONTROLLER_BASE_DIR/tegraflash/$ARCHIVE_NAME"
 
-if controller_ssh "$CONTROLLER" "[ -f '$REMOTE_ARCHIVE' ]" 2>/dev/null; then
-    log_success "Archive already exists on controller, skipping upload"
+EC2_CHECKSUM=$(ssh_cmd "$ip" "md5sum '$ARCHIVE' | cut -d' ' -f1")
+CONTROLLER_CHECKSUM=$(controller_ssh "$CONTROLLER" "md5sum '$REMOTE_ARCHIVE' 2>/dev/null | cut -d' ' -f1" || echo "")
+
+if [ "$EC2_CHECKSUM" = "$CONTROLLER_CHECKSUM" ]; then
+    log_success "Archive unchanged (checksum match), skipping upload"
 else
     TMP_FILE=$(mktemp)
     trap "rm -f $TMP_FILE" EXIT

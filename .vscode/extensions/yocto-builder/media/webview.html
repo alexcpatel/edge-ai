@@ -350,15 +350,13 @@
                 <span class="info-label">Status:</span>
                 <span>{{CONTROLLER_STATUS_TEXT}}</span>
             </div>
-            <div class="button-group" style="margin-bottom: 12px;">
-                <button onclick="pushTegraflash()">Push Tegraflash</button>
-            </div>
             <div class="status" style="margin-top: 12px;">
                 <div class="status-indicator {{FLASH_STATUS_CLASS}}"></div>
                 <span><strong>Flash:</strong> {{FLASH_STATUS_TEXT}}</span>
             </div>
             {{FLASH_ELAPSED_TIME}}
             {{FLASH_DEVICE_STATUS}}
+            {{FLASH_DISABLED_REASON}}
             <div class="button-group">
                 <button onclick="flashStart()" {{FLASH_START_DISABLED}}>Start</button>
                 <button onclick="flashWatch()" {{FLASH_WATCH_DISABLED}}>Watch</button>
@@ -586,10 +584,6 @@
 
         function flashTerminate() {
             vscode.postMessage({ command: 'flashTerminate' });
-        }
-
-        function pushTegraflash() {
-            vscode.postMessage({ command: 'pushTegraflash' });
         }
 
     </script>

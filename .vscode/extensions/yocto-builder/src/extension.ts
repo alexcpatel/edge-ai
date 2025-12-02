@@ -148,10 +148,6 @@ export function activate(context: vscode.ExtensionContext) {
                 outputChannel.appendLine('Command: flashTerminate');
                 runCommand('make firmware-controller-flash-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
             }),
-            vscode.commands.registerCommand('yocto-builder.pushTegraflash', () => {
-                outputChannel.appendLine('Command: pushTegraflash');
-                runCommand('make firmware-controller-push-tegraflash C=steamdeck', 'Yocto Builder - Push Tegraflash');
-            }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
                 provider?.refresh();
@@ -379,9 +375,6 @@ class YoctoBuilderPanel {
                         break;
                     case 'flashTerminate':
                         runCommand('make firmware-controller-flash-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
-                        break;
-                    case 'pushTegraflash':
-                        runCommand('make firmware-controller-push-tegraflash C=steamdeck', 'Yocto Builder - Push Tegraflash');
                         break;
                     case 'toggleStopOnComplete':
                         // Store preference locally (works even when instance is not running)
@@ -612,8 +605,12 @@ class YoctoBuilderPanel {
         html = html.replace(/\{\{FLASH_STATUS_CLASS\}\}/g, flashStatus.running ? 'running' : 'stopped');
         html = html.replace(/\{\{FLASH_STATUS_TEXT\}\}/g, flashStatus.running ? 'Running' : 'Not Running');
         const usbDeviceDetected = flashStatus.usbDeviceDetected === true;
-        const flashStartDisabled = flashStatus.running || !usbDeviceDetected;
+        const flashStartDisabled = flashStatus.running || !usbDeviceDetected || !instanceRunning;
         html = html.replace(/\{\{FLASH_START_DISABLED\}\}/g, flashStartDisabled ? 'disabled' : '');
+
+        // Flash start disabled reason (only show EC2 warning since USB status is shown separately)
+        const flashDisabledReason = !instanceRunning ? 'EC2 instance must be running to flash (tegraflash is synced from EC2)' : '';
+        html = html.replace(/\{\{FLASH_DISABLED_REASON\}\}/g, flashDisabledReason ? `<div class="warning">${flashDisabledReason}</div>` : '');
         html = html.replace(/\{\{FLASH_WATCH_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
         html = html.replace(/\{\{FLASH_TERMINATE_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
 
@@ -626,8 +623,8 @@ class YoctoBuilderPanel {
         ` : '';
         html = html.replace(/\{\{FLASH_ELAPSED_TIME\}\}/g, flashElapsedHtml);
 
-        // Flash device status section
-        const flashDeviceHtml = flashStatus.usbDeviceDetected !== undefined ? `
+        // Flash device status section (hide when flash is running)
+        const flashDeviceHtml = (!flashStatus.running && flashStatus.usbDeviceDetected !== undefined) ? `
         <div class="info-row">
             <span class="info-label">USB Device:</span>
             <span style="display: flex; align-items: center; gap: 6px;">
@@ -641,7 +638,7 @@ class YoctoBuilderPanel {
         // Flash mode toggle (bootloader vs rootfs)
         const flashMode = this._context.globalState.get<string>('flashMode', 'bootloader');
         const flashRunning = flashStatus.running;
-        const modeDisabled = flashRunning || !usbDeviceDetected;
+        const modeDisabled = flashRunning || !usbDeviceDetected || !instanceRunning;
         const flashModeHtml = `
         <div class="stop-on-complete" style="margin-top: 8px;">
             <label style="display: block; margin-bottom: 4px; font-weight: bold;">Flash Target:</label>
