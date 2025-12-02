@@ -1,0 +1,19 @@
+[connection]
+id=Wired Default
+uuid=ecf9dbb6-cb34-46d3-a608-fd4e6998e04e
+type=ethernet
+autoconnect=true
+autoconnect-priority=100
+
+[ethernet]
+mac-address-blacklist=
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+addr-gen-mode=stable-privacy
+
+[proxy]
+

@@ -1,0 +1,16 @@
+[Unit]
+Description=Create /data partition on first boot
+DefaultDependencies=no
+Before=local-fs-pre.target
+After=systemd-udevd.service
+ConditionPathExists=!/data/.partition-setup-done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/edge-partition-setup.sh
+ExecStartPost=/bin/touch /run/partition-setup-done
+
+[Install]
+WantedBy=local-fs-pre.target
+

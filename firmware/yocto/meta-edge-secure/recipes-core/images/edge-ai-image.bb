@@ -20,6 +20,7 @@ IMAGE_INSTALL += " \
 # Networking
 IMAGE_INSTALL += " \
     networkmanager \
+    edge-network-config \
     wpa-supplicant \
     ca-certificates \
     curl \
@@ -28,6 +29,7 @@ IMAGE_INSTALL += " \
 
 # Bootstrap and provisioning
 IMAGE_INSTALL += " \
+    edge-partition-setup \
     edge-bootstrap \
     edge-claim-certs \
     systemd-data-services-generator \
@@ -81,16 +83,8 @@ hostname:pn-base-files = "edge-ai"
 IMAGE_ROOTFS_SIZE ?= "2048000"
 IMAGE_OVERHEAD_FACTOR = "1.1"
 
-# Post-process: create marker file for first-boot provisioning
-ROOTFS_POSTPROCESS_COMMAND += "create_provision_marker; "
-
-create_provision_marker() {
-    install -d ${IMAGE_ROOTFS}/data
-    install -d ${IMAGE_ROOTFS}/data/apps
-    install -d ${IMAGE_ROOTFS}/data/services
-    install -d ${IMAGE_ROOTFS}/data/config
-    touch ${IMAGE_ROOTFS}/data/.need_provisioning
-}
+# Note: /data directory structure and .need_provisioning marker are created
+# by edge-partition-setup.sh when formatting the data partition at first boot
 
 # Tegraflash output for NVMe
 IMAGE_FSTYPES = "tegraflash"
