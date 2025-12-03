@@ -1,10 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec, ChildProcess } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { exec } from 'child_process';
 
 // Wrapper for execAsync with timeout to prevent hanging processes
 async function execWithTimeout(command: string, options: { cwd?: string; timeout?: number } = {}): Promise<{ stdout: string; stderr: string }> {
@@ -85,7 +82,6 @@ interface FlashStatus {
     running: boolean;
     elapsed?: string;
     elapsedSeconds?: number; // Total seconds for client-side incrementing
-    usbDeviceDetected?: boolean;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -136,17 +132,21 @@ export function activate(context: vscode.ExtensionContext) {
                 outputChannel.appendLine('Command: buildTerminate');
                 runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
             }),
+            vscode.commands.registerCommand('yocto-builder.recoveryEnable', () => {
+                outputChannel.appendLine('Command: recoveryEnable');
+                runCommand('make firmware-recovery-enable', 'Yocto Builder - Recovery');
+            }),
             vscode.commands.registerCommand('yocto-builder.flashStart', () => {
                 outputChannel.appendLine('Command: flashStart');
-                runCommand('make firmware-controller-flash C=steamdeck', 'Yocto Builder - Flash Start');
+                runCommand('make firmware-flash', 'Yocto Builder - Flash');
             }),
             vscode.commands.registerCommand('yocto-builder.flashWatch', () => {
                 outputChannel.appendLine('Command: flashWatch');
-                runCommand('make firmware-controller-flash-watch C=steamdeck', 'Yocto Builder - Flash Watch');
+                runCommand('make firmware-flash-watch', 'Yocto Builder - Flash');
             }),
             vscode.commands.registerCommand('yocto-builder.flashTerminate', () => {
                 outputChannel.appendLine('Command: flashTerminate');
-                runCommand('make firmware-controller-flash-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
+                runCommand('make firmware-flash-terminate', 'Yocto Builder - Flash');
             }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
@@ -304,25 +304,7 @@ class YoctoBuilderPanel {
             async message => {
                 switch (message.command) {
                     case 'instanceStart':
-                        runCommand('make firmware-ec2-start', 'Yocto Builder - Start');
-                        // Sync auto-stop preference to server after instance starts (silently, no terminal)
-                        const autoStopPref = this._context.globalState.get<boolean>('autoStopOnBuildComplete', false);
-                        if (autoStopPref) {
-                            const wsFolder = vscode.workspace.workspaceFolders?.[0];
-                            if (wsFolder) {
-                                setTimeout(async () => {
-                                    try {
-                                        const instanceStatus = await this.getInstanceStatus(wsFolder.uri.fsPath);
-                                        if (instanceStatus.state?.toLowerCase() === 'running') {
-                                            // Run silently without opening a terminal, with timeout
-                                            await execWithTimeout('make firmware-build-set-auto-stop', { cwd: wsFolder.uri.fsPath, timeout: 15000 });
-                                        }
-                                    } catch (error) {
-                                        // Ignore errors (including timeouts)
-                                    }
-                                }, 5000); // Wait 5 seconds for instance to be ready
-                            }
-                        }
+                        runCommand('make firmware-ec2-start', 'Yocto Builder');
                         break;
                     case 'instanceStop':
                         await this.handleInstanceStop();
@@ -335,71 +317,29 @@ class YoctoBuilderPanel {
                         break;
                     case 'buildStart':
                         runCommand('make firmware-build', 'Yocto Builder - Build');
-                        // Sync auto-stop preference to server after instance starts (silently, no terminal)
-                        const autoStopPreference = this._context.globalState.get<boolean>('autoStopOnBuildComplete', false);
-                        if (autoStopPreference) {
-                            const wsFolder = vscode.workspace.workspaceFolders?.[0];
-                            if (wsFolder) {
-                                // Wait a bit for instance to start, then sync preference silently
-                                setTimeout(async () => {
-                                    try {
-                                        const instanceStatus = await this.getInstanceStatus(wsFolder.uri.fsPath);
-                                        if (instanceStatus.state?.toLowerCase() === 'running') {
-                                            // Run silently without opening a terminal, with timeout
-                                            await execWithTimeout('make firmware-build-set-auto-stop', { cwd: wsFolder.uri.fsPath, timeout: 15000 });
-                                        }
-                                    } catch (error) {
-                                        // Ignore errors (including timeouts)
-                                    }
-                                }, 10000); // Wait 10 seconds for instance to be ready
-                            }
-                        }
                         break;
                     case 'buildWatch':
-                        runCommand('make firmware-build-watch', 'Yocto Builder - Watch');
+                        runCommand('make firmware-build-watch', 'Yocto Builder - Build');
                         break;
                     case 'buildTerminate':
-                        runCommand('make firmware-build-terminate', 'Yocto Builder - Terminate');
+                        runCommand('make firmware-build-terminate', 'Yocto Builder');
+                        break;
+                    case 'recoveryEnable':
+                        runCommand('make firmware-recovery-enable', 'Yocto Builder - Recovery');
                         break;
                     case 'flashStart':
                         const flashMode = message.mode || 'bootloader';
-                        const flashCommand = `make firmware-controller-flash C=steamdeck MODE=${flashMode}`;
-                        runCommand(flashCommand, 'Yocto Builder - Flash Start');
+                        runCommand(`make firmware-flash MODE=${flashMode}`, 'Yocto Builder - Flash');
                         break;
                     case 'toggleFlashMode':
                         this._context.globalState.update('flashMode', message.value || 'bootloader');
                         this.update();
                         break;
                     case 'flashWatch':
-                        runCommand('make firmware-controller-flash-watch C=steamdeck', 'Yocto Builder - Flash Watch');
+                        runCommand('make firmware-flash-watch', 'Yocto Builder - Flash');
                         break;
                     case 'flashTerminate':
-                        runCommand('make firmware-controller-flash-terminate C=steamdeck', 'Yocto Builder - Flash Terminate');
-                        break;
-                    case 'toggleStopOnComplete':
-                        // Store preference locally (works even when instance is not running)
-                        this._context.globalState.update('autoStopOnBuildComplete', message.value || false);
-
-                        // If instance is running, sync to server immediately (silently, no terminal)
-                        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-                        if (workspaceFolder) {
-                            try {
-                                const instanceStatus = await this.getInstanceStatus(workspaceFolder.uri.fsPath);
-                                if (instanceStatus.state?.toLowerCase() === 'running') {
-                                    if (message.value) {
-                                        // Run silently without opening a terminal, with timeout
-                                        await execWithTimeout('make firmware-build-set-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
-                                    } else {
-                                        // Run silently without opening a terminal, with timeout
-                                        await execWithTimeout('make firmware-build-unset-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
-                                    }
-                                }
-                            } catch (error) {
-                                // Instance not running, that's okay - preference is stored locally
-                            }
-                        }
-                        // Update UI to reflect change
-                        this.update();
+                        runCommand('make firmware-flash-terminate', 'Yocto Builder - Flash');
                         break;
                     case 'refresh':
                         this.update();
@@ -524,37 +464,8 @@ class YoctoBuilderPanel {
         html = html.replace(/\{\{BUILD_WATCH_DISABLED\}\}/g, !buildStatus.running ? 'disabled' : '');
         html = html.replace(/\{\{BUILD_TERMINATE_DISABLED\}\}/g, !buildStatus.running ? 'disabled' : '');
 
-        // Stop on build complete option (always visible and selectable)
-        // Check server-side flag file status if instance is running, otherwise use local preference
-        let autoStopEnabled = false;
-        const localPreference = this._context.globalState.get<boolean>('autoStopOnBuildComplete', false);
-
-        if (instanceRunning) {
-            try {
-                const { stdout } = await execWithTimeout('make firmware-build-check-auto-stop', { cwd: workspaceFolder.uri.fsPath, timeout: 15000 });
-                autoStopEnabled = stdout.includes('enabled') || stdout.trim() === '1';
-                // Sync local preference if server has different value
-                if (autoStopEnabled !== localPreference) {
-                    this._context.globalState.update('autoStopOnBuildComplete', autoStopEnabled);
-                }
-            } catch (error) {
-                // If command fails or times out, use local preference
-                autoStopEnabled = localPreference;
-            }
-        } else {
-            // Instance not running, use local preference
-            autoStopEnabled = localPreference;
-        }
-
-        const stopOnCompleteHtml = `
-        <div class="stop-on-complete">
-            <label>
-                <input type="checkbox" id="stopOnComplete" ${autoStopEnabled ? 'checked' : ''} onchange="toggleStopOnComplete(this.checked)">
-                Stop instance when build ends
-            </label>
-        </div>
-        `;
-        html = html.replace(/\{\{STOP_ON_COMPLETE\}\}/g, stopOnCompleteHtml);
+        // Build workflow note (EC2 auto-stops after build)
+        html = html.replace(/\{\{STOP_ON_COMPLETE\}\}/g, '');
 
         // Download artifacts button - removed
         html = html.replace(/\{\{DOWNLOAD_ARTIFACTS_BUTTON\}\}/g, '');
@@ -604,13 +515,10 @@ class YoctoBuilderPanel {
         // Flash status section
         html = html.replace(/\{\{FLASH_STATUS_CLASS\}\}/g, flashStatus.running ? 'running' : 'stopped');
         html = html.replace(/\{\{FLASH_STATUS_TEXT\}\}/g, flashStatus.running ? 'Running' : 'Not Running');
-        const usbDeviceDetected = flashStatus.usbDeviceDetected === true;
-        const flashStartDisabled = flashStatus.running || !usbDeviceDetected || !instanceRunning;
+        // Flash pulls from S3 and handles recovery mode internally - just need controller reachable
+        const flashStartDisabled = flashStatus.running || !controllerStatus.reachable;
         html = html.replace(/\{\{FLASH_START_DISABLED\}\}/g, flashStartDisabled ? 'disabled' : '');
-
-        // Flash start disabled reason (only show EC2 warning since USB status is shown separately)
-        const flashDisabledReason = !instanceRunning ? 'EC2 instance must be running to flash (tegraflash is synced from EC2)' : '';
-        html = html.replace(/\{\{FLASH_DISABLED_REASON\}\}/g, flashDisabledReason ? `<div class="warning">${flashDisabledReason}</div>` : '');
+        html = html.replace(/\{\{FLASH_DISABLED_REASON\}\}/g, '');
         html = html.replace(/\{\{FLASH_WATCH_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
         html = html.replace(/\{\{FLASH_TERMINATE_DISABLED\}\}/g, !flashStatus.running ? 'disabled' : '');
 
@@ -623,33 +531,22 @@ class YoctoBuilderPanel {
         ` : '';
         html = html.replace(/\{\{FLASH_ELAPSED_TIME\}\}/g, flashElapsedHtml);
 
-        // Flash device status section (hide when flash is running)
-        const flashDeviceHtml = (!flashStatus.running && flashStatus.usbDeviceDetected !== undefined) ? `
-        <div class="info-row">
-            <span class="info-label">USB Device:</span>
-            <span style="display: flex; align-items: center; gap: 6px;">
-                ${flashStatus.usbDeviceDetected ? '<div class="status-indicator running" style="width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;"></div>' : '<div class="status-indicator stopped" style="width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;"></div>'}
-                ${flashStatus.usbDeviceDetected ? 'NVIDIA device detected' : 'No NVIDIA device'}
-            </span>
-        </div>
-        ` : '';
-        html = html.replace(/\{\{FLASH_DEVICE_STATUS\}\}/g, flashDeviceHtml);
+        // Flash device status section - removed (flash command handles recovery mode internally)
+        html = html.replace(/\{\{FLASH_DEVICE_STATUS\}\}/g, '');
 
         // Flash mode toggle (bootloader vs rootfs)
         const flashMode = this._context.globalState.get<string>('flashMode', 'bootloader');
-        const flashRunning = flashStatus.running;
-        const modeDisabled = flashRunning || !usbDeviceDetected || !instanceRunning;
         const flashModeHtml = `
         <div class="stop-on-complete" style="margin-top: 8px;">
             <label style="display: block; margin-bottom: 4px; font-weight: bold;">Flash Target:</label>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: ${modeDisabled ? 'not-allowed' : 'pointer'}; opacity: ${modeDisabled ? '0.6' : '1'};">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
                 <input type="radio" name="flashMode" value="bootloader" ${flashMode === 'bootloader' ? 'checked' : ''}
-                    ${modeDisabled ? 'disabled' : ''} onchange="updateFlashMode('bootloader')">
+                    onchange="updateFlashMode('bootloader')">
                 Bootloader (SPI)
             </label>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: ${modeDisabled ? 'not-allowed' : 'pointer'}; opacity: ${modeDisabled ? '0.6' : '1'};">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
                 <input type="radio" name="flashMode" value="rootfs" ${flashMode === 'rootfs' ? 'checked' : ''}
-                    ${modeDisabled ? 'disabled' : ''} onchange="updateFlashMode('rootfs')">
+                    onchange="updateFlashMode('rootfs')">
                 Rootfs (NVMe)
             </label>
         </div>
@@ -837,28 +734,8 @@ class YoctoBuilderPanel {
 
     private async getFlashStatus(workspacePath: string): Promise<FlashStatus> {
         try {
-            const { stdout } = await execWithTimeout('make firmware-controller-flash-status C=steamdeck', { cwd: workspacePath, timeout: 10000 });
-            const status = this.parseFlashStatusOutput(stdout);
-
-            // Check USB device status on controller
-            try {
-                const controllerStatus = await this.getControllerStatus(workspacePath);
-                if (controllerStatus.reachable) {
-                    try {
-                        const { stdout: usbStdout } = await execWithTimeout(
-                            'make firmware-controller-usb-device C=steamdeck',
-                            { cwd: workspacePath, timeout: 5000 }
-                        );
-                        status.usbDeviceDetected = usbStdout.trim() === 'detected';
-                    } catch (usbError) {
-                        status.usbDeviceDetected = false;
-                    }
-                }
-            } catch (controllerError) {
-                // If we can't check controller, USB device status is unknown
-            }
-
-            return status;
+            const { stdout } = await execWithTimeout('make firmware-flash-status', { cwd: workspacePath, timeout: 10000 });
+            return this.parseFlashStatusOutput(stdout);
         } catch (error: any) {
             if (error?.stdout) {
                 return this.parseFlashStatusOutput(error.stdout);

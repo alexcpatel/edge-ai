@@ -90,3 +90,9 @@ variable "github_repository" {
   type        = string
 }
 
+variable "artifacts_bucket_name" {
+  description = "S3 bucket name for build artifacts"
+  type        = string
+  default     = "edge-ai-build-artifacts"
+}
+

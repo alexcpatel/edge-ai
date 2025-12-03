@@ -24,7 +24,7 @@ firmware-ec2-health: ## Run EC2 health diagnostics
 	@$(EC2_DIR)/scripts/ec2.sh health
 
 # Yocto builds on EC2
-firmware-build: firmware-ec2-start ## Build Yocto image on EC2
+firmware-build: firmware-ec2-start ## Build image (uploads to S3, stops EC2 automatically)
 	@$(EC2_DIR)/scripts/build.sh start
 	@$(EC2_DIR)/scripts/build.sh watch
 
@@ -36,15 +36,6 @@ firmware-build-watch: ## Tail build log
 
 firmware-build-terminate: ## Terminate build session
 	@$(EC2_DIR)/scripts/build.sh terminate
-
-firmware-build-set-auto-stop: ## Enable auto-stop
-	@$(EC2_DIR)/scripts/build.sh set-auto-stop
-
-firmware-build-unset-auto-stop: ## Disable auto-stop
-	@$(EC2_DIR)/scripts/build.sh unset-auto-stop
-
-firmware-build-check-auto-stop: ## Check auto-stop status
-	@$(EC2_DIR)/scripts/build.sh check-auto-stop
 
 # Clean operations
 firmware-clean: ## Clean current image
@@ -77,28 +68,32 @@ firmware-controller-setup: ## Set up controller
 firmware-controller-deploy: ## Deploy scripts to controller
 	@$(CONTROLLER_DIR)/scripts/controller.sh deploy $(C)
 
-# Controller Jetson forced recovery mode (Raspberry Pi only)
-firmware-controller-forced-recovery-enable: firmware-controller-deploy ## Hold FC_REC low (power cycle Jetson to enter recovery)
+# Forced recovery mode (uses raspberrypi)
+firmware-recovery-enable: ## Hold FC_REC low (power cycle Jetson to enter recovery)
+	@$(CONTROLLER_DIR)/scripts/controller.sh deploy raspberrypi
 	@$(CONTROLLER_DIR)/scripts/forced-recovery-mode.sh enable
 
-firmware-controller-forced-recovery-disable: firmware-controller-deploy ## Release FC_REC
+firmware-recovery-disable: ## Release FC_REC
 	@$(CONTROLLER_DIR)/scripts/forced-recovery-mode.sh disable
 
-firmware-controller-forced-recovery-status: firmware-controller-deploy ## Check GPIO state and NVIDIA USB device
+firmware-recovery-status: ## Check GPIO state and NVIDIA USB device
 	@$(CONTROLLER_DIR)/scripts/forced-recovery-mode.sh status
 
-# Controller Jetson flashing
-firmware-controller-flash: firmware-controller-deploy ## Flash Jetson via USB (MODE=bootloader|rootfs)
-	@$(CONTROLLER_DIR)/scripts/flash.sh start $(MODE)
+# Flashing (downloads from S3, enables recovery, flashes via steamdeck)
+firmware-flash: ## Pull from S3 and flash Jetson (MODE=bootloader|rootfs)
+	@$(CONTROLLER_DIR)/scripts/controller.sh deploy steamdeck
+	@$(CONTROLLER_DIR)/scripts/controller.sh deploy raspberrypi
+	@$(CONTROLLER_DIR)/scripts/flash.sh pull
+	@$(CONTROLLER_DIR)/scripts/flash.sh flash $(MODE)
 	@$(CONTROLLER_DIR)/scripts/flash.sh watch
 
-firmware-controller-flash-status: ## Check flash status
+firmware-flash-status: ## Check flash status
 	@$(CONTROLLER_DIR)/scripts/flash.sh status
 
-firmware-controller-flash-watch: ## Tail flash log
+firmware-flash-watch: ## Tail flash log
 	@$(CONTROLLER_DIR)/scripts/flash.sh watch
 
-firmware-controller-flash-terminate: ## Terminate flash session
+firmware-flash-terminate: ## Terminate flash session
 	@$(CONTROLLER_DIR)/scripts/flash.sh terminate
 
 # App management on device

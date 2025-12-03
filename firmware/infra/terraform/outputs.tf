@@ -23,3 +23,8 @@ output "github_actions_role_arn" {
   value       = aws_iam_role.github_actions.arn
 }
 
+output "artifacts_bucket_name" {
+  description = "S3 bucket name for build artifacts"
+  value       = aws_s3_bucket.artifacts.bucket
+}
+

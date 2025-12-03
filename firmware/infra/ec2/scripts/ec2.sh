@@ -80,6 +80,7 @@ stop_instance() {
     local state=$(get_instance_state "$id")
 
     [ "$state" == "stopped" ] && { log_info "Instance already stopped"; return 0; }
+    [ "$state" == "stopping" ] && { log_info "Instance already stopping"; return 0; }
     [ "$state" != "running" ] && { log_error "Instance is in state: $state (cannot stop)"; exit 1; }
 
     log_info "Stopping instance..."

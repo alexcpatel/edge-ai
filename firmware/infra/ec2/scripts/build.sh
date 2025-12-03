@@ -2,7 +2,8 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+source "$SCRIPT_DIR/lib/common.sh"
 
 is_build_running() {
     ssh_cmd "$1" "tmux has-session -t yocto-build 2>/dev/null" >/dev/null 2>&1
@@ -29,7 +30,7 @@ upload_source() {
 start_build() {
     local ip=$(get_instance_ip_or_exit)
 
-    is_build_running "$ip" && { log_error "Build already running. Use 'make build-terminate' first"; exit 1; }
+    is_build_running "$ip" && { log_error "Build already running. Use 'make firmware-build-terminate' first"; exit 1; }
 
     upload_source "$ip"
     log_info "Starting Yocto build..."
@@ -71,8 +72,8 @@ start_build() {
     ssh_cmd "$ip" "pkill -f 'monitor-build-stop.sh' 2>/dev/null || true" || true
     ssh_cmd "$ip" "setsid bash $monitor_script > /tmp/build-monitor.log 2>&1 < /dev/null &" || true
 
-    log_success "Build started"
-    log_info "Use 'make build-watch' to view progress"
+    log_success "Build started (EC2 will upload to S3 and stop automatically)"
+    log_info "Use 'make firmware-build-watch' to view progress"
 }
 
 check_status() {
@@ -105,12 +106,21 @@ check_status() {
 }
 
 watch_build() {
-    local ip=$(get_instance_ip_or_exit)
-    is_build_running "$ip" || { log_error "No build session. Start with 'make build'"; exit 1; }
-    log_info "Watching build log..."
-    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/watch-build.sh" || {
-        log_info "Watch ended (build continues in background)"; exit 0
+    local ip
+    ip=$(get_instance_ip_or_exit 2>/dev/null) || {
+        log_info "EC2 not running (build may have completed and stopped)"
+        return 0
     }
+
+    is_build_running "$ip" || {
+        log_info "No build session (build may have completed)"
+        return 0
+    }
+
+    log_info "Watching build log (EC2 will upload to S3 and stop automatically)..."
+    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/watch-build.sh" || true
+
+    log_info "Watch ended"
 }
 
 terminate_build() {
@@ -122,29 +132,10 @@ terminate_build() {
     log_success "Build terminated"
 }
 
-FLAG_FILE="/tmp/auto-stop-ec2"
-
-set_auto_stop() {
-    ssh_cmd "$(get_instance_ip_or_exit)" "touch $FLAG_FILE"
-    log_success "Auto-stop enabled"
-}
-
-unset_auto_stop() {
-    ssh_cmd "$(get_instance_ip_or_exit)" "rm -f $FLAG_FILE"
-    log_success "Auto-stop disabled"
-}
-
-check_auto_stop() {
-    ssh_cmd "$(get_instance_ip_or_exit)" "test -f $FLAG_FILE" 2>/dev/null && echo "enabled" || echo "disabled"
-}
-
 case "${1:-start}" in
     start) start_build ;;
     status) check_status ;;
     watch) watch_build ;;
     terminate) terminate_build ;;
-    set-auto-stop) set_auto_stop ;;
-    unset-auto-stop) unset_auto_stop ;;
-    check-auto-stop) check_auto_stop ;;
-    *) echo "Usage: $0 [start|status|watch|terminate|set-auto-stop|unset-auto-stop|check-auto-stop]"; exit 1 ;;
+    *) echo "Usage: $0 [start|status|watch|terminate]"; exit 1 ;;
 esac
