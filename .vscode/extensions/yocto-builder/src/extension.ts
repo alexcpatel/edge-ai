@@ -84,6 +84,22 @@ interface FlashStatus {
     elapsedSeconds?: number; // Total seconds for client-side incrementing
 }
 
+interface CostRun {
+    start: number;      // Unix timestamp
+    end: number;        // Unix timestamp
+    duration_secs: number;
+    cost: number;
+    instance_type: string;
+}
+
+interface CostData {
+    runs: CostRun[];
+    total_duration_secs: number;
+    total_cost: number;
+    hourly_rate: number;
+    error?: string;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Yocto Builder');
     outputChannel.appendLine('Yocto Builder extension activated');
@@ -429,11 +445,12 @@ class YoctoBuilderPanel {
         }
 
         // Run status checks in parallel to reduce delay
-        const [instanceStatus, buildStatus, controllerStatus, flashStatus] = await Promise.all([
+        const [instanceStatus, buildStatus, controllerStatus, flashStatus, costData] = await Promise.all([
             this.getInstanceStatus(workspaceFolder.uri.fsPath),
             this.getBuildStatus(workspaceFolder.uri.fsPath),
             this.getControllerStatus(workspaceFolder.uri.fsPath),
-            this.getFlashStatus(workspaceFolder.uri.fsPath)
+            this.getFlashStatus(workspaceFolder.uri.fsPath),
+            this.getCostData(workspaceFolder.uri.fsPath)
         ]);
 
         // Read HTML template
@@ -455,6 +472,31 @@ class YoctoBuilderPanel {
         // Disable SSH and Health if instance is not running
         html = html.replace(/\{\{INSTANCE_SSH_DISABLED\}\}/g, !instanceRunning ? 'disabled' : '');
         html = html.replace(/\{\{INSTANCE_HEALTH_DISABLED\}\}/g, !instanceRunning ? 'disabled' : '');
+
+        // Cost history section
+        let costHtml = '';
+        if (costData.runs && costData.runs.length > 0) {
+            costHtml = `
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--vscode-panel-border);">
+                <div style="font-size: 10px; color: var(--vscode-descriptionForeground); margin-bottom: 4px;">
+                    Last ${costData.runs.length} runs · $${costData.hourly_rate}/hr
+                </div>
+                <table style="width: 100%; font-size: 10px; border-collapse: collapse;">
+                    <tr style="color: var(--vscode-descriptionForeground);">
+                        <td>When</td><td style="text-align:right">Duration</td><td style="text-align:right">Cost</td>
+                    </tr>
+                    ${costData.runs.slice().reverse().map(r => {
+                        const costStr = r.cost < 0.01 ? r.cost.toFixed(3) : r.cost.toFixed(2);
+                        return `<tr>
+                        <td>${this.formatRelativeTime(r.start)}</td><td style="text-align:right">${this.formatDurationShort(r.duration_secs)}</td><td style="text-align:right">$${costStr}</td>
+                    </tr>`;
+                    }).join('')}
+                </table>
+            </div>`;
+        } else if (!costData.error) {
+            costHtml = `<div style="margin-top: 8px; font-size: 10px; color: var(--vscode-descriptionForeground);">No usage history yet</div>`;
+        }
+        html = html.replace(/\{\{COST_HISTORY\}\}/g, costHtml);
 
         html = html.replace(/\{\{BUILD_STATUS_CLASS\}\}/g, buildStatus.running ? 'running' : 'stopped');
         html = html.replace(/\{\{BUILD_STATUS_TEXT\}\}/g, buildStatus.running ? 'Running' : 'Not Running');
@@ -742,6 +784,32 @@ class YoctoBuilderPanel {
             }
             return { running: false };
         }
+    }
+
+    private async getCostData(workspacePath: string): Promise<CostData> {
+        try {
+            const { stdout } = await execWithTimeout('make firmware-ec2-costs', { cwd: workspacePath, timeout: 15000 });
+            return JSON.parse(stdout.trim());
+        } catch (error: any) {
+            return { runs: [], total_duration_secs: 0, total_cost: 0, hourly_rate: 0, error: 'Failed to load' };
+        }
+    }
+
+    private formatRelativeTime(timestamp: number): string {
+        const now = Date.now() / 1000;
+        const diff = now - timestamp;
+        if (diff < 60) return `${Math.floor(diff)}s ago`;
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+        return `${Math.floor(diff / 86400)}d ago`;
+    }
+
+    private formatDurationShort(secs: number): string {
+        if (secs < 60) return `${secs}s`;
+        if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        return m > 0 ? `${h}h ${m}m` : `${h}h`;
     }
 
     public dispose() {

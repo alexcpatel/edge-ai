@@ -2,8 +2,9 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
-source "$(dirname "${BASH_SOURCE[0]}")/lib/diagnostics.sh"
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/diagnostics.sh"
 
 get_instance_type() {
     aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$1" \
@@ -14,12 +15,14 @@ setup_ec2() {
     local ip="$1"
     log_info "Setting up EC2..."
     ssh_cmd "$ip" "YOCTO_MACHINE='$YOCTO_MACHINE' YOCTO_DIR='$YOCTO_DIR' REMOTE_SOURCE_DIR='$REMOTE_SOURCE_DIR' bash -s" \
-        < "$(dirname "${BASH_SOURCE[0]}")/on-ec2/setup.sh"
+        < "$SCRIPT_DIR/on-ec2/setup.sh"
     log_success "EC2 setup completed"
 }
 
 show_status() {
     check_aws_creds
+    "$SCRIPT_DIR/ec2-usage.sh" close 2>/dev/null || true
+
     local id=$(get_instance_id)
     [ -z "$id" ] || [ "$id" == "None" ] && { echo "Instance: not found"; exit 0; }
 
@@ -50,8 +53,11 @@ show_status() {
 
 start_instance() {
     check_aws_creds
+    "$SCRIPT_DIR/ec2-usage.sh" close 2>/dev/null || true
+
     local id=$(get_instance_or_exit)
     local state=$(get_instance_state "$id")
+    local instance_type=$(get_instance_type "$id")
 
     [ "$state" == "running" ] && { log_success "Instance is running"; return 0; }
     [ "$state" != "stopped" ] && { log_error "Instance is in state: $state (cannot start)"; exit 1; }
@@ -61,6 +67,8 @@ start_instance() {
     timeout 300 aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids "$id" || {
         log_error "Instance failed to start within 5 minutes"; exit 1
     }
+    # Record start as soon as instance is running (AWS billing starts here)
+    "$SCRIPT_DIR/ec2-usage.sh" start "$instance_type"
 
     local ip=$(get_instance_ip "$id")
     log_info "Waiting for SSH..."
@@ -85,7 +93,10 @@ stop_instance() {
 
     log_info "Stopping instance..."
     aws ec2 stop-instances --region "$AWS_REGION" --instance-ids "$id" >/dev/null
-    log_success "Stop initiated"
+    aws ec2 wait instance-stopped --region "$AWS_REGION" --instance-ids "$id" 2>/dev/null || true
+    # Record stop after instance is fully stopped
+    "$SCRIPT_DIR/ec2-usage.sh" stop 2>/dev/null || true
+    log_success "Instance stopped"
 }
 
 ssh_instance() {
@@ -149,10 +160,11 @@ health_check() {
 
 case "${1:-status}" in
     status) show_status ;;
-    start) start_instance ;;
-    stop) stop_instance ;;
-    ssh) ssh_instance "$@" ;;
+    start)  start_instance ;;
+    stop)   stop_instance ;;
+    ssh)    ssh_instance "$@" ;;
     health) health_check ;;
-    setup) setup_ec2 "$(get_instance_ip_or_exit)" ;;
-    *) echo "Usage: $0 [status|start|stop|ssh|health|setup]"; exit 1 ;;
+    setup)  setup_ec2 "$(get_instance_ip_or_exit)" ;;
+    costs)  "$SCRIPT_DIR/ec2-usage.sh" costs ;;
+    *)      echo "Usage: $0 [status|start|stop|ssh|health|setup|costs]"; exit 1 ;;
 esac

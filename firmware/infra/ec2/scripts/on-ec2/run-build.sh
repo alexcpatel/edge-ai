@@ -14,9 +14,14 @@ export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-2}"
 KAS_CONFIG="$1"
 YOCTO_DIR="$2"
 LOG_FILE="/tmp/yocto-build.log"
+BUILD_HISTORY_FILE="$HOME/.ec2-build-history.json"
 
 # Start fresh log
 echo "Build started at $(date)" > "$LOG_FILE"
+
+# Record build start time
+BUILD_START_TIME=$(date +%s)
+echo "$BUILD_START_TIME" > /tmp/build-start-time
 
 YOCTO_DIR="${YOCTO_DIR:-$HOME/yocto-tegra}"
 SOURCE_DIR="${YOCTO_DIR}/edge-ai"
