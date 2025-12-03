@@ -58,9 +58,6 @@ firmware-controller-list: ## List controllers
 firmware-controller-status: ## Show controller status
 	@$(CONTROLLER_DIR)/scripts/controller.sh status $(C)
 
-firmware-controller-usb-device: ## Check for NVIDIA USB device on controller
-	@$(CONTROLLER_DIR)/scripts/controller.sh usb-device $(C)
-
 firmware-controller-setup: ## Set up controller
 	@$(CONTROLLER_DIR)/scripts/controller.sh ssh-keys $(C)
 	@$(CONTROLLER_DIR)/scripts/controller.sh setup $(C)

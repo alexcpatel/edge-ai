@@ -10,6 +10,8 @@ LOG_FILE="${LOG_FILE:-/tmp/usb-flash.log}"
 # Size of rootfs partition (8GB), remainder becomes /data
 ROOTFS_SIZE_BYTES=8589934592
 
+# Clear log file at start of new flash
+> "$LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 [ -z "$ARCHIVE_PATH" ] && { echo "Usage: $0 <archive> [bootloader|rootfs]"; exit 1; }
