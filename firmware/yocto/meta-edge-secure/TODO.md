@@ -37,8 +37,8 @@
 ### Build & Flash
 
 - [x] Test build on EC2
-- [ ] Verify tegraflash output includes correct partitions
-- [ ] Create /data partition during flash (may need flash script update)
+- [x] Verify tegraflash output includes correct partitions
+- [x] Create /data partition during flash (may need flash script update)
 
 ### Post-Flash Verification
 

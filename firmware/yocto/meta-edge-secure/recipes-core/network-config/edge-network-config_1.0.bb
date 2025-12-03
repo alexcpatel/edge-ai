@@ -26,6 +26,9 @@ do_install() {
     ln -sf /dev/null ${D}${sysconfdir}/systemd/system/systemd-networkd.service
     ln -sf /dev/null ${D}${sysconfdir}/systemd/system/systemd-networkd-wait-online.service
     ln -sf /dev/null ${D}${sysconfdir}/systemd/system/systemd-networkd.socket
+
+    # Mask the LSB (SysV) network-manager.service to prevent conflict with systemd native service
+    ln -sf /dev/null ${D}${sysconfdir}/systemd/system/network-manager.service
 }
 
 FILES:${PN} = " \
@@ -33,5 +36,6 @@ FILES:${PN} = " \
     ${sysconfdir}/systemd/system/systemd-networkd.service \
     ${sysconfdir}/systemd/system/systemd-networkd-wait-online.service \
     ${sysconfdir}/systemd/system/systemd-networkd.socket \
+    ${sysconfdir}/systemd/system/network-manager.service \
 "
 

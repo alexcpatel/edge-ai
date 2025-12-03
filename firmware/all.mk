@@ -77,6 +77,16 @@ firmware-controller-setup: ## Set up controller
 firmware-controller-deploy: ## Deploy scripts to controller
 	@$(CONTROLLER_DIR)/scripts/controller.sh deploy $(C)
 
+# Controller Jetson forced recovery mode (Raspberry Pi only)
+firmware-controller-forced-recovery-enable: firmware-controller-deploy ## Hold FC_REC low (power cycle Jetson to enter recovery)
+	@$(CONTROLLER_DIR)/scripts/forced-recovery-mode.sh enable
+
+firmware-controller-forced-recovery-disable: firmware-controller-deploy ## Release FC_REC
+	@$(CONTROLLER_DIR)/scripts/forced-recovery-mode.sh disable
+
+firmware-controller-forced-recovery-status: firmware-controller-deploy ## Check GPIO state and NVIDIA USB device
+	@$(CONTROLLER_DIR)/scripts/forced-recovery-mode.sh status
+
 # Controller Jetson flashing
 firmware-controller-flash: firmware-controller-deploy ## Flash Jetson via USB (MODE=bootloader|rootfs)
 	@$(CONTROLLER_DIR)/scripts/flash.sh start $(MODE)
