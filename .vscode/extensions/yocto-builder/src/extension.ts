@@ -764,7 +764,9 @@ class YoctoBuilderPanel {
             flashElapsed = Math.floor((state.flashEndTime - state.flashStartTime) / 1000);
         }
 
-        const totalElapsed = state.startTime ? Math.floor((now - state.startTime) / 1000) : 0;
+        // Use endTime when complete, otherwise use now
+        const endTime = isComplete && state.flashEndTime ? state.flashEndTime : now;
+        const totalElapsed = state.startTime ? Math.floor((endTime - state.startTime) / 1000) : 0;
 
         // Build segment classes
         const buildClass = state.buildFailed ? 'failed' : buildComplete ? 'complete' : buildActive ? 'active' : '';
@@ -778,6 +780,11 @@ class YoctoBuilderPanel {
             const lastRun = prev.total ? `Last: ${this.formatDurationCompact(prev.total)}` : '';
             return `<div class="workflow-idle">${lastRun}</div>`;
         }
+
+        // Show last run time on the right during active workflow
+        const lastRunHtml = !isComplete && prev.total
+            ? `<div class="progress-last">Last: ${this.formatDurationCompact(prev.total)}</div>`
+            : '';
 
         return `
             <div class="workflow-progress" id="workflowProgress"
@@ -795,6 +802,7 @@ class YoctoBuilderPanel {
                     <span class="segment-label">Flash</span>
                     <span class="segment-time" id="flashTime"></span>
                 </div>
+                ${lastRunHtml}
                 <div class="progress-total" id="totalTime" style="display: ${isComplete ? 'block' : 'none'}"></div>
             </div>
         `;
