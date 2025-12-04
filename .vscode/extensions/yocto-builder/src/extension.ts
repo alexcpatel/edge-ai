@@ -100,6 +100,25 @@ interface CostData {
     error?: string;
 }
 
+type WorkflowPhase = 'idle' | 'build' | 'flash' | 'complete';
+
+interface WorkflowState {
+    phase: WorkflowPhase;
+    startTime?: number;
+    buildStartTime?: number;
+    buildEndTime?: number;
+    buildFailed?: boolean;
+    flashStartTime?: number;
+    flashEndTime?: number;
+    flashFailed?: boolean;
+}
+
+interface PreviousRunTimes {
+    build?: number;   // Duration in ms
+    flash?: number;
+    total?: number;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Yocto Builder');
     outputChannel.appendLine('Yocto Builder extension activated');
@@ -163,6 +182,10 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand('yocto-builder.flashTerminate', () => {
                 outputChannel.appendLine('Command: flashTerminate');
                 runCommand('make firmware-flash-terminate', 'Yocto Builder - Flash');
+            }),
+            vscode.commands.registerCommand('yocto-builder.buildFlash', () => {
+                outputChannel.appendLine('Command: buildFlash');
+                runCommand('make firmware-build-flash', 'Yocto Builder - Build & Flash');
             }),
             vscode.commands.registerCommand('yocto-builder.refresh', () => {
                 outputChannel.appendLine('Command: refresh');
@@ -287,6 +310,12 @@ class YoctoBuilderPanel {
     private _disposables: vscode.Disposable[] = [];
     private _previousBuildRunning: boolean = false;
 
+    // Workflow state tracking (persists across updates)
+    private static _workflowState: WorkflowState = { phase: 'idle' };
+
+    // Previous run times for estimates
+    private static _previousRunTimes: PreviousRunTimes = {};
+
     public static createOrShow(extensionPath: string, context: vscode.ExtensionContext) {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
@@ -314,6 +343,9 @@ class YoctoBuilderPanel {
         this._panel = panel;
         this._extensionPath = extensionPath;
         this._context = context;
+
+        // Load previous run times from global state
+        YoctoBuilderPanel._previousRunTimes = context.globalState.get('workflowPreviousRunTimes', {});
 
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
         this._panel.webview.onDidReceiveMessage(
@@ -357,6 +389,9 @@ class YoctoBuilderPanel {
                     case 'flashTerminate':
                         runCommand('make firmware-flash-terminate', 'Yocto Builder - Flash');
                         break;
+                    case 'buildFlash':
+                        this.runBuildFlashWorkflow();
+                        break;
                     case 'refresh':
                         this.update();
                         break;
@@ -374,11 +409,101 @@ class YoctoBuilderPanel {
         if (workspaceFolder) {
             // Track build state for UI updates
             const buildStatus = await this.getBuildStatus(workspaceFolder.uri.fsPath);
+            const flashStatus = await this.getFlashStatus(workspaceFolder.uri.fsPath);
+            const instanceStatus = await this.getInstanceStatus(workspaceFolder.uri.fsPath);
+
             this._previousBuildRunning = buildStatus.running;
         }
 
         const webview = this._panel.webview;
         this._panel.webview.html = await this._getHtmlForWebview(webview);
+    }
+
+    private async runBuildFlashWorkflow() {
+        const now = Date.now();
+        YoctoBuilderPanel._workflowState = {
+            phase: 'build',
+            startTime: now,
+            buildStartTime: now
+        };
+        this.update();
+
+        // Run build
+        const buildSuccess = await this.runCommandAsync('make firmware-build', 'Yocto Builder - Build');
+
+        const state = YoctoBuilderPanel._workflowState;
+        state.buildEndTime = Date.now();
+
+        if (!buildSuccess) {
+            state.buildFailed = true;
+            state.phase = 'idle';
+            this.update();
+            return;
+        }
+
+        // Run flash
+        state.phase = 'flash';
+        state.flashStartTime = Date.now();
+        this.update();
+
+        const flashSuccess = await this.runCommandAsync('make firmware-flash', 'Yocto Builder - Flash');
+
+        state.flashEndTime = Date.now();
+        state.flashFailed = !flashSuccess;
+        state.phase = flashSuccess ? 'complete' : 'idle';
+
+        // Save run times for future estimates
+        this.saveRunTimes();
+        this.update();
+    }
+
+    private runCommandAsync(command: string, terminalName: string): Promise<boolean> {
+        return new Promise((resolve) => {
+            const terminal = vscode.window.createTerminal(terminalName);
+            terminal.show();
+            terminal.sendText(`${command}; exit $?`);
+
+            const disposable = vscode.window.onDidCloseTerminal(closedTerminal => {
+                if (closedTerminal === terminal) {
+                    disposable.dispose();
+                    // exitStatus is undefined if user closes terminal, treat as failure
+                    resolve(closedTerminal.exitStatus?.code === 0);
+                }
+            });
+        });
+    }
+
+    private saveRunTimes() {
+        const state = YoctoBuilderPanel._workflowState;
+        const buildDuration = state.buildStartTime && state.buildEndTime
+            ? state.buildEndTime - state.buildStartTime : undefined;
+        const flashDuration = state.flashStartTime && state.flashEndTime
+            ? state.flashEndTime - state.flashStartTime : undefined;
+        const totalDuration = state.startTime ? Date.now() - state.startTime : undefined;
+
+        YoctoBuilderPanel._previousRunTimes = {
+            build: buildDuration,
+            flash: flashDuration,
+            total: totalDuration
+        };
+        this._context.globalState.update('workflowPreviousRunTimes', YoctoBuilderPanel._previousRunTimes);
+    }
+
+    public static resetWorkflow() {
+        YoctoBuilderPanel._workflowState = { phase: 'idle' };
+    }
+
+    private formatDurationCompact(ms: number): string {
+        const secs = Math.floor(ms / 1000);
+        if (secs < 60) return `${secs}s`;
+        const mins = Math.floor(secs / 60);
+        if (mins < 60) {
+            const remainSecs = secs % 60;
+            return remainSecs > 0 ? `${mins}m${remainSecs}s` : `${mins}m`;
+        }
+        const hours = Math.floor(mins / 60);
+        const remainMins = mins % 60;
+        return remainMins > 0 ? `${hours}h${remainMins}m` : `${hours}h`;
     }
 
     private async handleInstanceStop(): Promise<void> {
@@ -578,16 +703,18 @@ class YoctoBuilderPanel {
 
         // Flash mode toggle (bootloader vs rootfs)
         const flashMode = this._context.globalState.get<string>('flashMode', 'bootloader');
+        const workflowActive = YoctoBuilderPanel._workflowState.phase !== 'idle' && YoctoBuilderPanel._workflowState.phase !== 'complete';
+        const flashModeDisabled = flashStatus.running || workflowActive;
         const flashModeHtml = `
         <div class="stop-on-complete" style="margin-top: 8px;">
             <label style="display: block; margin-bottom: 4px; font-weight: bold;">Flash Target:</label>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                <input type="radio" name="flashMode" value="bootloader" ${flashMode === 'bootloader' ? 'checked' : ''}
+            <label style="display: flex; align-items: center; gap: 6px; cursor: ${flashModeDisabled ? 'not-allowed' : 'pointer'}; opacity: ${flashModeDisabled ? '0.5' : '1'};">
+                <input type="radio" name="flashMode" value="bootloader" ${flashMode === 'bootloader' ? 'checked' : ''} ${flashModeDisabled ? 'disabled' : ''}
                     onchange="updateFlashMode('bootloader')">
                 Bootloader (SPI)
             </label>
-            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                <input type="radio" name="flashMode" value="rootfs" ${flashMode === 'rootfs' ? 'checked' : ''}
+            <label style="display: flex; align-items: center; gap: 6px; cursor: ${flashModeDisabled ? 'not-allowed' : 'pointer'}; opacity: ${flashModeDisabled ? '0.5' : '1'};">
+                <input type="radio" name="flashMode" value="rootfs" ${flashMode === 'rootfs' ? 'checked' : ''} ${flashModeDisabled ? 'disabled' : ''}
                     onchange="updateFlashMode('rootfs')">
                 Rootfs (NVMe)
             </label>
@@ -595,7 +722,82 @@ class YoctoBuilderPanel {
         `;
         html = html.replace(/\{\{FLASH_MODE_TOGGLE\}\}/g, flashModeHtml);
 
+        // Bottom bar - Build & Flash workflow
+        const workflowState = YoctoBuilderPanel._workflowState;
+        const workflowRunning = workflowState.phase === 'build' || workflowState.phase === 'flash';
+        const workflowDisabled = workflowRunning || !controllerStatus.reachable;
+        html = html.replace(/\{\{BUILD_FLASH_DISABLED\}\}/g, workflowDisabled ? 'disabled' : '');
+
+        // Generate progress bar HTML
+        const progressHtml = this.getWorkflowProgressHtml();
+        html = html.replace(/\{\{WORKFLOW_PROGRESS\}\}/g, progressHtml);
+
         return html;
+    }
+
+    private getWorkflowProgressHtml(): string {
+        const state = YoctoBuilderPanel._workflowState;
+        const prev = YoctoBuilderPanel._previousRunTimes;
+        const now = Date.now();
+
+        // Calculate states
+        const buildComplete = state.buildEndTime !== undefined;
+        const buildActive = state.phase === 'build';
+        const flashComplete = state.flashEndTime !== undefined;
+        const flashActive = state.phase === 'flash';
+        const isComplete = state.phase === 'complete';
+        const isIdle = state.phase === 'idle';
+
+        // Calculate elapsed seconds for JS to increment
+        let buildElapsed = 0;
+        let flashElapsed = 0;
+
+        if (buildActive && state.buildStartTime) {
+            buildElapsed = Math.floor((now - state.buildStartTime) / 1000);
+        } else if (buildComplete && state.buildStartTime && state.buildEndTime) {
+            buildElapsed = Math.floor((state.buildEndTime - state.buildStartTime) / 1000);
+        }
+
+        if (flashActive && state.flashStartTime) {
+            flashElapsed = Math.floor((now - state.flashStartTime) / 1000);
+        } else if (flashComplete && state.flashStartTime && state.flashEndTime) {
+            flashElapsed = Math.floor((state.flashEndTime - state.flashStartTime) / 1000);
+        }
+
+        const totalElapsed = state.startTime ? Math.floor((now - state.startTime) / 1000) : 0;
+
+        // Build segment classes
+        const buildClass = state.buildFailed ? 'failed' : buildComplete ? 'complete' : buildActive ? 'active' : '';
+        const flashClass = state.flashFailed ? 'failed' : flashComplete ? 'complete' : flashActive ? 'active' : '';
+
+        // Show previous estimate only during active phase
+        const buildEstimateMs = buildActive && prev.build ? prev.build : 0;
+        const flashEstimateMs = flashActive && prev.flash ? prev.flash : 0;
+
+        if (isIdle && !buildComplete) {
+            const lastRun = prev.total ? `Last: ${this.formatDurationCompact(prev.total)}` : '';
+            return `<div class="workflow-idle">${lastRun}</div>`;
+        }
+
+        return `
+            <div class="workflow-progress" id="workflowProgress"
+                data-phase="${state.phase}"
+                data-build-elapsed="${buildElapsed}"
+                data-flash-elapsed="${flashElapsed}"
+                data-total-elapsed="${totalElapsed}"
+                data-build-estimate="${buildEstimateMs}"
+                data-flash-estimate="${flashEstimateMs}">
+                <div class="progress-segment ${buildClass}" id="buildSegment">
+                    <span class="segment-label">Build</span>
+                    <span class="segment-time" id="buildTime"></span>
+                </div>
+                <div class="progress-segment ${flashClass}" id="flashSegment">
+                    <span class="segment-label">Flash</span>
+                    <span class="segment-time" id="flashTime"></span>
+                </div>
+                <div class="progress-total" id="totalTime" style="display: ${isComplete ? 'block' : 'none'}"></div>
+            </div>
+        `;
     }
 
     private escapeHtml(text: string): string {

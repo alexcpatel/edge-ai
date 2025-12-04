@@ -16,7 +16,7 @@
 
         body {
             font-family: var(--vscode-font-family);
-            padding: 8px;
+            padding: 10px;
             margin: 0;
             color: var(--vscode-foreground);
             background-color: var(--vscode-editor-background);
@@ -283,6 +283,117 @@
         body {
             position: relative;
         }
+
+        /* Bottom bar */
+        .bottom-bar {
+            flex-shrink: 0;
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .workflow-button {
+            padding: 5px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .workflow-button:hover:not(:disabled) {
+            background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
+        }
+
+        .workflow-button:disabled {
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .workflow-progress {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            flex: 1;
+        }
+
+        .workflow-idle {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .progress-segment {
+            flex: 1;
+            height: 20px;
+            background: var(--vscode-panel-border);
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-segment.active {
+            background: linear-gradient(90deg, #1565c0 0%, #1e88e5 100%);
+            color: #bbdefb;
+        }
+
+        .progress-segment.active::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            animation: shimmer 1.5s infinite;
+        }
+
+        @keyframes shimmer {
+            100% { left: 100%; }
+        }
+
+        .progress-segment.complete {
+            background: #4caf50;
+            color: white;
+        }
+
+        .progress-segment.failed {
+            background: #c62828;
+            color: #ffcdd2;
+        }
+
+        .segment-label {
+            font-weight: 600;
+        }
+
+        .segment-time {
+            opacity: 0.8;
+        }
+
+        .progress-total {
+            font-size: 10px;
+            font-weight: 600;
+            color: #4caf50;
+            padding-left: 6px;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
     </style>
 </head>
 
@@ -365,6 +476,13 @@
             </div>
             {{FLASH_MODE_TOGGLE}}
         </div>
+    </div>
+
+    <div class="bottom-bar">
+        <button class="workflow-button" id="buildFlashBtn" onclick="buildFlash()" {{BUILD_FLASH_DISABLED}}>
+            ▶ Build & Flash
+        </button>
+        {{WORKFLOW_PROGRESS}}
     </div>
 
     <script>
@@ -493,6 +611,113 @@
             }
         }
 
+        // Workflow progress time tracking
+        let workflowTimeInterval = null;
+        let workflowBuildElapsed = 0;
+        let workflowFlashElapsed = 0;
+        let workflowTotalElapsed = 0;
+        let workflowLastUpdate = Date.now();
+
+        function formatWorkflowTime(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            const mins = Math.floor(seconds / 60);
+            if (mins < 60) {
+                const secs = seconds % 60;
+                return secs > 0 ? `${mins}m${secs}s` : `${mins}m`;
+            }
+            const hours = Math.floor(mins / 60);
+            const remainMins = mins % 60;
+            return remainMins > 0 ? `${hours}h${remainMins}m` : `${hours}h`;
+        }
+
+        function formatEstimate(ms) {
+            if (!ms || ms <= 0) return '';
+            const secs = Math.floor(ms / 1000);
+            return `~${formatWorkflowTime(secs)}`;
+        }
+
+        function updateWorkflowTimes() {
+            const progress = document.getElementById('workflowProgress');
+            if (!progress) return;
+
+            const phase = progress.dataset.phase;
+            const now = Date.now();
+            const elapsed = Math.floor((now - workflowLastUpdate) / 1000);
+
+            // Increment times based on phase
+            if (phase === 'build') {
+                workflowBuildElapsed += elapsed;
+                workflowTotalElapsed += elapsed;
+            } else if (phase === 'flash') {
+                workflowFlashElapsed += elapsed;
+                workflowTotalElapsed += elapsed;
+            }
+            workflowLastUpdate = now;
+
+            // Update display
+            const buildTime = document.getElementById('buildTime');
+            const flashTime = document.getElementById('flashTime');
+            const totalTime = document.getElementById('totalTime');
+            const buildEstimate = parseInt(progress.dataset.buildEstimate) || 0;
+            const flashEstimate = parseInt(progress.dataset.flashEstimate) || 0;
+
+            if (buildTime) {
+                if (phase === 'build') {
+                    const est = buildEstimate ? ` ${formatEstimate(buildEstimate)}` : '';
+                    buildTime.textContent = formatWorkflowTime(workflowBuildElapsed) + est;
+                } else if (workflowBuildElapsed > 0) {
+                    buildTime.textContent = formatWorkflowTime(workflowBuildElapsed);
+                }
+            }
+
+            if (flashTime) {
+                if (phase === 'flash') {
+                    const est = flashEstimate ? ` ${formatEstimate(flashEstimate)}` : '';
+                    flashTime.textContent = formatWorkflowTime(workflowFlashElapsed) + est;
+                } else if (workflowFlashElapsed > 0) {
+                    flashTime.textContent = formatWorkflowTime(workflowFlashElapsed);
+                }
+            }
+
+            if (totalTime && phase === 'complete') {
+                totalTime.textContent = formatWorkflowTime(workflowTotalElapsed);
+                totalTime.style.display = 'block';
+            }
+
+            // Stop interval if complete or idle
+            if (phase === 'complete' || phase === 'idle') {
+                if (workflowTimeInterval) {
+                    clearInterval(workflowTimeInterval);
+                    workflowTimeInterval = null;
+                }
+            }
+        }
+
+        function startWorkflowTimeTracking() {
+            const progress = document.getElementById('workflowProgress');
+            if (!progress) return;
+
+            // Initialize from data attributes
+            workflowBuildElapsed = parseInt(progress.dataset.buildElapsed) || 0;
+            workflowFlashElapsed = parseInt(progress.dataset.flashElapsed) || 0;
+            workflowTotalElapsed = parseInt(progress.dataset.totalElapsed) || 0;
+            workflowLastUpdate = Date.now();
+
+            // Clear existing interval
+            if (workflowTimeInterval) {
+                clearInterval(workflowTimeInterval);
+            }
+
+            const phase = progress.dataset.phase;
+            if (phase === 'build' || phase === 'flash') {
+                updateWorkflowTimes();
+                workflowTimeInterval = setInterval(updateWorkflowTimes, 1000);
+            } else {
+                // Just update once for complete/idle states
+                updateWorkflowTimes();
+            }
+        }
+
         // Show refresh animation briefly when page updates (auto-refresh)
         function showRefreshAnimation() {
             if (refreshIndicator) {
@@ -530,6 +755,7 @@
             showRefreshAnimation();
             startElapsedTimeTracking();
             startFlashElapsedTimeTracking();
+            startWorkflowTimeTracking();
             initProgressBar();
         }, 50);
 
@@ -585,6 +811,21 @@
 
         function flashTerminate() {
             vscode.postMessage({ command: 'flashTerminate' });
+        }
+
+        function buildFlash() {
+            const btn = document.getElementById('buildFlashBtn');
+            if (btn && btn.disabled) return;
+            btn.disabled = true;
+
+            // Disable flash mode selection
+            document.querySelectorAll('input[name="flashMode"]').forEach(input => {
+                input.disabled = true;
+                input.closest('label').style.opacity = '0.5';
+                input.closest('label').style.cursor = 'not-allowed';
+            });
+
+            vscode.postMessage({ command: 'buildFlash' });
         }
 
     </script>

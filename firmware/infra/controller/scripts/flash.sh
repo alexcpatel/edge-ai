@@ -49,9 +49,16 @@ pull_tegraflash() {
     log_success "Tegraflash pulled to controller"
 }
 
+power_cycle_device() {
+    log_info "Power cycling device..."
+    "$SCRIPT_DIR/homeassistant.sh" plug-off || { log_error "Failed to power off"; return 1; }
+    sleep 5
+    "$SCRIPT_DIR/homeassistant.sh" plug-on || { log_error "Failed to power on"; return 1; }
+    log_success "Power cycle complete"
+}
+
 wait_for_nvidia_device() {
     log_info "Waiting for NVIDIA USB device..."
-    log_info ">>> Power cycle the Jetson now <<<"
 
     local count=0
     while true; do
@@ -72,7 +79,7 @@ wait_for_nvidia_device() {
 }
 
 do_flash() {
-    local FLASH_MODE="${1:-bootloader}"
+    local FLASH_MODE="${1:-rootfs}"
     [[ "$FLASH_MODE" == "bootloader" || "$FLASH_MODE" == "rootfs" ]] || {
         log_error "Invalid mode: $FLASH_MODE. Must be 'bootloader' or 'rootfs'"
         exit 1
@@ -86,9 +93,11 @@ do_flash() {
     [ "$FLASH_MODE" = "rootfs" ] && log_info "Mode: Rootfs (NVMe)" \
         || log_info "Mode: Bootloader (SPI)"
 
-    # Enable recovery mode before waiting for device
+    # Enable recovery mode, power cycle, wait for device
     log_info "Enabling forced recovery mode..."
     "$SCRIPT_DIR/forced-recovery-mode.sh" enable || true
+
+    power_cycle_device
 
     wait_for_nvidia_device
 

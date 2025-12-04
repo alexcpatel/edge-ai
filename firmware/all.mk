@@ -89,7 +89,7 @@ firmware-power-off: ## Turn off smart plug
 firmware-power-status: ## Get smart plug status
 	@$(CONTROLLER_DIR)/scripts/homeassistant.sh plug-status
 
-# Flashing (downloads from S3, enables recovery, flashes via steamdeck)
+# Flashing (downloads from S3, power cycles, enables recovery, flashes via steamdeck)
 firmware-flash: ## Pull from S3 and flash Jetson (MODE=bootloader|rootfs)
 	@$(CONTROLLER_DIR)/scripts/controller.sh deploy steamdeck
 	@$(CONTROLLER_DIR)/scripts/controller.sh deploy raspberrypi
@@ -105,6 +105,9 @@ firmware-flash-watch: ## Tail flash log
 
 firmware-flash-terminate: ## Terminate flash session
 	@$(CONTROLLER_DIR)/scripts/flash.sh terminate
+
+# Combined build + flash (full automated workflow)
+firmware-build-flash: firmware-build firmware-flash ## Build image then flash Jetson (MODE=bootloader|rootfs)
 
 # App management on device
 # firmware-app-deploy: ## Deploy app container to device (APP=, DEVICE_HOST=, DEVICE_USER=)
