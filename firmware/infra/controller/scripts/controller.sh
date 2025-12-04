@@ -27,13 +27,14 @@ run_setup() {
 
     log_info "Setting up $name..."
 
-    local setup_script="$SCRIPT_DIR/on-controller/setup.sh"
-    [ ! -f "$setup_script" ] && { log_error "Setup script not found"; exit 1; }
+    local setup_dir="$SCRIPT_DIR/on-controller"
+    [ ! -f "$setup_dir/setup.sh" ] && { log_error "Setup script not found"; exit 1; }
 
-    local tmp="/tmp/setup-controller-$$.sh"
+    local remote_setup_dir="/tmp/edge-setup-$$"
+    controller_ssh "$name" "mkdir -p $remote_setup_dir"
     rsync -e "ssh -o StrictHostKeyChecking=no" -az \
-        "$setup_script" "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}:${tmp}"
-    controller_ssh "$name" "bash $tmp && rm -f $tmp"
+        "$setup_dir/" "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}:${remote_setup_dir}/"
+    controller_ssh "$name" "chmod +x $remote_setup_dir/*.sh && bash $remote_setup_dir/setup.sh && rm -rf $remote_setup_dir"
 
     log_success "Setup complete"
 }
@@ -61,8 +62,9 @@ deploy_scripts() {
 }
 
 setup_ssh_keys() {
-    local targets=("${CONTROLLERS[@]}")
-    [ -n "${1:-}" ] && { require_controller "$1"; targets=("$1"); }
+    require_controller "${1:-}"
+    local name="$1"
+    get_controller_info "$name"
 
     local ssh_key="$HOME/.ssh/id_ed25519"
     [ ! -f "$ssh_key" ] && {
@@ -70,14 +72,11 @@ setup_ssh_keys() {
         ssh-keygen -t ed25519 -C "laptop-to-controller" -f "$ssh_key" -N ""
     }
 
-    for name in "${targets[@]}"; do
-        get_controller_info "$name"
-        log_info "Setting up SSH keys for $name..."
-        ssh-copy-id -i "${ssh_key}.pub" "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}" || {
-            log_error "Failed for $name"; continue
-        }
-        log_success "SSH key copied to $name"
-    done
+    log_info "Setting up SSH keys for $name..."
+    ssh-copy-id -i "${ssh_key}.pub" "${CURRENT_CONTROLLER_USER}@${CURRENT_CONTROLLER_HOST}" || {
+        log_error "Failed for $name"; exit 1
+    }
+    log_success "SSH key copied to $name"
 }
 
 ssh_to_controller() {

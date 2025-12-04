@@ -2,12 +2,15 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 [ "$EUID" -eq 0 ] && { echo "Do not run as root"; exit 1; }
 
 CONTROLLER_BASE_DIR="$HOME/edge-ai-controller"
 
 HOSTNAME=$(hostname 2>/dev/null || echo "unknown")
 [[ "$HOSTNAME" == *"steamdeck"* || "$HOSTNAME" == *"deck"* ]] && IS_STEAMDECK=true || IS_STEAMDECK=false
+grep -q "Raspberry Pi" /proc/cpuinfo 2>/dev/null && IS_RASPBERRYPI=true || IS_RASPBERRYPI=false
 
 echo "Setting up controller ($(hostname))..."
 
@@ -45,4 +48,9 @@ else
     echo "NordVPN not found. Install: curl -fsSL https://downloads.nordcdn.com/apps/linux/install.sh | sh"
 fi
 
+if [ "$IS_RASPBERRYPI" = true ]; then
+    source "$SCRIPT_DIR/setup-homeassistant.sh"
+fi
+
+echo ""
 echo "Setup complete"

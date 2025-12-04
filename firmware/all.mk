@@ -79,6 +79,16 @@ firmware-recovery-disable: ## Release FC_REC
 firmware-recovery-status: ## Check GPIO state and NVIDIA USB device
 	@$(CONTROLLER_DIR)/scripts/forced-recovery-mode.sh status
 
+# Smart plug control
+firmware-power-on: ## Turn on smart plug
+	@$(CONTROLLER_DIR)/scripts/homeassistant.sh plug-on
+
+firmware-power-off: ## Turn off smart plug
+	@$(CONTROLLER_DIR)/scripts/homeassistant.sh plug-off
+
+firmware-power-status: ## Get smart plug status
+	@$(CONTROLLER_DIR)/scripts/homeassistant.sh plug-status
+
 # Flashing (downloads from S3, enables recovery, flashes via steamdeck)
 firmware-flash: ## Pull from S3 and flash Jetson (MODE=bootloader|rootfs)
 	@$(CONTROLLER_DIR)/scripts/controller.sh deploy steamdeck
@@ -97,14 +107,14 @@ firmware-flash-terminate: ## Terminate flash session
 	@$(CONTROLLER_DIR)/scripts/flash.sh terminate
 
 # App management on device
-firmware-app-deploy: ## Deploy app container to device (APP=, DEVICE_HOST=, DEVICE_USER=)
-	@$(APPS_SCRIPTS_DIR)/app-deploy.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+# firmware-app-deploy: ## Deploy app container to device (APP=, DEVICE_HOST=, DEVICE_USER=)
+# 	@$(APPS_SCRIPTS_DIR)/app-deploy.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
 
-firmware-app-stop: ## Stop and disable app on device (APP=, DEVICE_HOST=, DEVICE_USER=)
-	@$(APPS_SCRIPTS_DIR)/app-stop.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+# firmware-app-stop: ## Stop and disable app on device (APP=, DEVICE_HOST=, DEVICE_USER=)
+# 	@$(APPS_SCRIPTS_DIR)/app-stop.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
 
-firmware-app-logs: ## Tail app logs on device (APP=, DEVICE_HOST=, DEVICE_USER=)
-	@$(APPS_SCRIPTS_DIR)/app-logs.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+# firmware-app-logs: ## Tail app logs on device (APP=, DEVICE_HOST=, DEVICE_USER=)
+# 	@$(APPS_SCRIPTS_DIR)/app-logs.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
 
-firmware-device-check: ## Check that Jetson is reachable (DEVICE_HOST=, DEVICE_USER=)
-	@$(APPS_SCRIPTS_DIR)/device-check.sh "$(DEVICE_HOST)" "$(DEVICE_USER)"
+# firmware-device-check: ## Check that Jetson is reachable (DEVICE_HOST=, DEVICE_USER=)
+# 	@$(APPS_SCRIPTS_DIR)/device-check.sh "$(DEVICE_HOST)" "$(DEVICE_USER)"
