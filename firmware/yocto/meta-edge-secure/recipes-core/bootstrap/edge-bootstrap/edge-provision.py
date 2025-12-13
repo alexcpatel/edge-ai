@@ -103,12 +103,12 @@ class FleetProvisioner:
         self.error = None
         self.response_event = threading.Event()
 
-    def _on_connect(self, client, userdata, flags, rc, properties=None):
-        if rc == 0:
+    def _on_connect(self, client, userdata, flags, reason_code, properties):
+        if reason_code == 0:
             log("Connected to AWS IoT")
         else:
-            err(f"Connection failed with code {rc}")
-            self.error = f"Connection failed: {rc}"
+            err(f"Connection failed with code {reason_code}")
+            self.error = f"Connection failed: {reason_code}"
             self.response_event.set()
 
     def _on_message(self, client, userdata, msg):
@@ -125,13 +125,16 @@ class FleetProvisioner:
             self.error = str(e)
             self.response_event.set()
 
-    def _on_disconnect(self, client, userdata, rc, properties=None):
-        if rc != 0:
-            err(f"Unexpected disconnect: {rc}")
+    def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
+        if reason_code != 0:
+            err(f"Unexpected disconnect: {reason_code}")
 
     def _create_client(self):
         """Create and configure MQTT client."""
-        client = mqtt.Client(protocol=mqtt.MQTTv311)
+        client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            protocol=mqtt.MQTTv311
+        )
         client.on_connect = self._on_connect
         client.on_message = self._on_message
         client.on_disconnect = self._on_disconnect
