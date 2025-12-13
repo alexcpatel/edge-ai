@@ -61,13 +61,14 @@ resource "aws_instance" "yocto_builder" {
 
   vpc_security_group_ids = [aws_security_group.yocto_builder.id]
 
+  # Small root volume for OS only - can be replaced easily
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 200
+    volume_size           = 30
     iops                  = 3000
     throughput            = 125
     encrypted             = false
-    delete_on_termination = false # Keep volume when instance is terminated
+    delete_on_termination = true
   }
 
   tags = {
@@ -75,12 +76,38 @@ resource "aws_instance" "yocto_builder" {
   }
 
   # Prevent Terraform from making changes to running instance
-  # Note: ami and instance_type are not ignored to allow architecture changes
   lifecycle {
     ignore_changes = [
       user_data,
       vpc_security_group_ids
     ]
   }
+}
+
+# Separate data volume for Yocto builds - can be snapshotted/deleted independently
+resource "aws_ebs_volume" "yocto_data" {
+  availability_zone = aws_instance.yocto_builder.availability_zone
+  size              = 200
+  type              = "gp3"
+  iops              = 3000
+  throughput        = 125
+
+  tags = {
+    Name = "yocto-builder-data"
+  }
+
+  lifecycle {
+    # Volume is managed separately (snapshot/restore cycle)
+    ignore_changes = [snapshot_id]
+  }
+}
+
+resource "aws_volume_attachment" "yocto_data" {
+  device_name = "/dev/sdf"
+  volume_id   = aws_ebs_volume.yocto_data.id
+  instance_id = aws_instance.yocto_builder.id
+
+  # Don't force detach - let scripts handle graceful unmount
+  force_detach = false
 }
 

@@ -22,6 +22,12 @@ variable "alert_interval_hours" {
   default     = 1
 }
 
+variable "archive_after_hours" {
+  description = "Auto-archive data volume after instance stopped for this many hours"
+  type        = number
+  default     = 24
+}
+
 variable "notification_email" {
   description = "Email address to receive alerts"
   type        = string
@@ -30,7 +36,7 @@ variable "notification_email" {
 variable "function_name" {
   description = "Name of the Lambda function"
   type        = string
-  default     = "yocto-instance-uptime-alert"
+  default     = "yocto-builder-ec2-monitor"
 }
 
 variable "schedule_expression" {

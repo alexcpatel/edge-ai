@@ -35,7 +35,13 @@ resource "aws_iam_role_policy" "lambda" {
         Effect = "Allow"
         Action = [
           "ec2:DescribeInstances",
-          "ec2:DescribeInstanceStatus"
+          "ec2:DescribeInstanceStatus",
+          "ec2:DescribeVolumes",
+          "ec2:DescribeSnapshots",
+          "ec2:CreateSnapshot",
+          "ec2:DeleteVolume",
+          "ec2:DetachVolume",
+          "ec2:CreateTags"
         ]
         Resource = "*"
       },
@@ -190,7 +196,15 @@ resource "aws_iam_role_policy" "github_actions" {
           "ec2:DescribeInstanceStatus",
           "ec2:StartInstances",
           "ec2:StopInstances",
-          "ec2:DescribeInstanceAttribute"
+          "ec2:DescribeInstanceAttribute",
+          "ec2:DescribeVolumes",
+          "ec2:DescribeSnapshots",
+          "ec2:CreateSnapshot",
+          "ec2:CreateVolume",
+          "ec2:DeleteVolume",
+          "ec2:AttachVolume",
+          "ec2:DetachVolume",
+          "ec2:CreateTags"
         ]
         Resource = "*"
       },
