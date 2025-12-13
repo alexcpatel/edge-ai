@@ -1,9 +1,8 @@
 [Unit]
 Description=Edge AI First Boot Bootstrap
-ConditionPathExists=/data/.need_provisioning
-After=network-online.target docker.service
+After=network-online.target docker.service data.mount
 Wants=network-online.target
-Requires=docker.service
+Requires=docker.service data.mount
 
 [Service]
 Type=oneshot

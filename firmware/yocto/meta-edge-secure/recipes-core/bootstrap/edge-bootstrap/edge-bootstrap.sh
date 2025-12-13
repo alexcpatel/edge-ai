@@ -1,35 +1,38 @@
 #!/bin/bash
 # Edge AI First Boot Bootstrap
-# Runs once on first boot to provision device
+# Runs on boot to provision device if not already provisioned
 
 set -euo pipefail
 
 log() { echo "[edge-bootstrap] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
 err() { log "ERROR: $*" >&2; }
 
-PROVISION_MARKER="/data/.need_provisioning"
 PROVISION_DONE="/data/.provisioned"
 DATA_DIR="/data"
-APPS_DIR="$DATA_DIR/apps"
-SERVICES_DIR="$DATA_DIR/services"
-CONFIG_DIR="$DATA_DIR/config"
 
-# Ensure data directories exist
+# Ensure data directories exist (runs every boot, idempotent)
 setup_data_partition() {
-    log "Setting up data partition structure..."
-    mkdir -p "$APPS_DIR" "$SERVICES_DIR" "$CONFIG_DIR"
-    mkdir -p "$DATA_DIR/docker"  # For container storage
+    log "Ensuring data partition structure..."
+    mkdir -p "$DATA_DIR/apps"
+    mkdir -p "$DATA_DIR/services"
+    mkdir -p "$DATA_DIR/config"
+    mkdir -p "$DATA_DIR/docker"
+    mkdir -p "$DATA_DIR/log"
 }
 
 main() {
-    log "Starting first-boot bootstrap..."
+    log "Starting bootstrap..."
 
-    if [ ! -f "$PROVISION_MARKER" ]; then
-        log "Provision marker not found, skipping bootstrap"
+    # Always ensure directory structure
+    setup_data_partition
+
+    # Check if already provisioned
+    if [ -f "$PROVISION_DONE" ]; then
+        log "Device already provisioned ($(cat "$PROVISION_DONE")), skipping"
         exit 0
     fi
 
-    setup_data_partition
+    log "Device not provisioned, starting provisioning..."
 
     # Step 1: AWS IoT Fleet Provisioning
     log "Running AWS IoT provisioning..."
@@ -49,8 +52,7 @@ main() {
         err "NordVPN setup failed (continuing anyway)"
     fi
 
-    # Step 3: Mark provisioning complete
-    rm -f "$PROVISION_MARKER"
+    # Mark provisioning complete
     date -Iseconds > "$PROVISION_DONE"
 
     log "Bootstrap complete!"
@@ -60,4 +62,3 @@ main() {
 }
 
 main "$@"
-

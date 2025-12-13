@@ -41,12 +41,91 @@ resource "aws_iam_role_policy" "fleet_provisioning" {
   })
 }
 
+# Pre-provisioning Lambda - cleans up old resources on re-flash
+resource "aws_iam_role" "pre_provisioning_lambda" {
+  name = "edge-ai-pre-provisioning-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "pre_provisioning_lambda" {
+  name = "edge-ai-pre-provisioning-lambda-policy"
+  role = aws_iam_role.pre_provisioning_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iot:DescribeThing",
+          "iot:DeleteThing",
+          "iot:ListThingPrincipals",
+          "iot:DetachThingPrincipal",
+          "iot:DetachPolicy",
+          "iot:ListAttachedPolicies",
+          "iot:UpdateCertificate",
+          "iot:DeleteCertificate"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "pre_provisioning" {
+  function_name = "edge-ai-pre-provisioning-hook"
+  role          = aws_iam_role.pre_provisioning_lambda.arn
+  handler       = "pre_provisioning_hook.handler"
+  runtime       = "python3.12"
+  timeout       = 30
+
+  filename         = data.archive_file.pre_provisioning_lambda.output_path
+  source_code_hash = data.archive_file.pre_provisioning_lambda.output_base64sha256
+}
+
+data "archive_file" "pre_provisioning_lambda" {
+  type        = "zip"
+  source_file = "${path.module}/pre_provisioning_hook.py"
+  output_path = "${path.module}/pre_provisioning_lambda.zip"
+}
+
+resource "aws_lambda_permission" "iot_invoke" {
+  statement_id  = "AllowIoTInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.pre_provisioning.function_name
+  principal     = "iot.amazonaws.com"
+}
+
 # Fleet Provisioning Template
 resource "aws_iot_provisioning_template" "device" {
   name                  = var.fleet_provisioning_template_name
   description           = "Fleet provisioning template for Edge AI devices"
   provisioning_role_arn = aws_iam_role.fleet_provisioning.arn
   enabled               = true
+
+  pre_provisioning_hook {
+    target_arn      = aws_lambda_function.pre_provisioning.arn
+    payload_version = "2020-04-01"
+  }
 
   template_body = jsonencode({
     Parameters = {

@@ -35,7 +35,7 @@ IMAGE_INSTALL += " \
     systemd-data-services-generator \
     jq \
     openssl \
-    mosquitto-clients \
+    python3-paho-mqtt \
 "
 
 # System utilities
