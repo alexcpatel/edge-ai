@@ -36,6 +36,8 @@ IMAGE_INSTALL += " \
     jq \
     openssl \
     python3-paho-mqtt \
+    python3-json \
+    python3-logging \
 "
 
 # System utilities
@@ -58,7 +60,7 @@ IMAGE_INSTALL += " \
 IMAGE_INSTALL += " \
     htop \
     less \
-    vim-tiny \
+    vim \
 "
 
 IMAGE_FEATURES += " \
