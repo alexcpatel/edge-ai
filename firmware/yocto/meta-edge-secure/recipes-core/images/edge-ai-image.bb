@@ -32,6 +32,7 @@ IMAGE_INSTALL += " \
 IMAGE_INSTALL += " \
     edge-partition-setup \
     edge-bootstrap \
+    edge-heartbeat \
     edge-claim-certs \
     systemd-data-services-generator \
     jq \

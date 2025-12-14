@@ -35,6 +35,16 @@ resource "aws_iot_policy" "device" {
           "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$${iot:Connection.Thing.ThingName}/*",
           "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/*"
         ]
+      },
+      {
+        # Device Shadow - explicit permissions for clarity
+        Effect = "Allow"
+        Action = [
+          "iot:GetThingShadow",
+          "iot:UpdateThingShadow",
+          "iot:DeleteThingShadow"
+        ]
+        Resource = ["arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:thing/$${iot:Connection.Thing.ThingName}"]
       }
     ]
   })

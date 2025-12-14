@@ -1,0 +1,18 @@
+[Unit]
+Description=Edge AI Device Heartbeat
+After=network-online.target data.mount
+Wants=network-online.target
+Requires=data.mount
+ConditionPathExists=/data/.provisioned
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/edge-heartbeat.py --daemon
+Restart=on-failure
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

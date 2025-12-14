@@ -7,6 +7,7 @@ set -euo pipefail
 log() { echo "[edge-bootstrap] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
 err() { log "ERROR: $*" >&2; }
 
+PROVISION_MARKER="/data/.need_provisioning"
 PROVISION_DONE="/data/.provisioned"
 DATA_DIR="/data"
 
@@ -27,7 +28,7 @@ main() {
     setup_data_partition
 
     # Check if already provisioned
-    if [ -f "$PROVISION_DONE" ]; then
+    if [ -f "$PROVISION_DONE" ] && [ -s "$PROVISION_DONE" ]; then
         log "Device already provisioned ($(cat "$PROVISION_DONE")), skipping"
         exit 0
     fi
@@ -36,7 +37,7 @@ main() {
 
     # Step 1: AWS IoT Fleet Provisioning
     log "Running AWS IoT provisioning..."
-    if /usr/bin/edge-provision.sh; then
+    if /usr/bin/edge-provision.py; then
         log "AWS IoT provisioning complete"
     else
         err "AWS IoT provisioning failed"
@@ -52,8 +53,9 @@ main() {
         err "NordVPN setup failed (continuing anyway)"
     fi
 
-    # Mark provisioning complete
-    date -Iseconds > "$PROVISION_DONE"
+    # Mark provisioning complete and clean up
+    rm -f "$PROVISION_MARKER"
+    date '+%Y-%m-%dT%H:%M:%S%z' > "$PROVISION_DONE"
 
     log "Bootstrap complete!"
 
