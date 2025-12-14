@@ -46,22 +46,13 @@ main() {
 
     log "Device not provisioned, starting provisioning..."
 
-    # Step 1: AWS IoT Fleet Provisioning
+    # AWS IoT Fleet Provisioning
     log "Running AWS IoT provisioning..."
     if /usr/bin/edge-provision.py; then
         log "AWS IoT provisioning complete"
     else
         err "AWS IoT provisioning failed"
         exit 1
-    fi
-
-    # Step 2: NordVPN Meshnet setup
-    log "Setting up NordVPN meshnet..."
-    if /usr/bin/edge-nordvpn.sh; then
-        log "NordVPN meshnet setup complete"
-    else
-        # Non-fatal - device can still work without VPN
-        err "NordVPN setup failed (continuing anyway)"
     fi
 
     # Mark provisioning complete and clean up

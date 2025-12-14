@@ -10,7 +10,6 @@ SRC_URI = " \
     file://claim.crt \
     file://claim.key \
     file://config.json \
-    file://nordvpn-token \
 "
 
 S = "${WORKDIR}"
@@ -22,7 +21,6 @@ do_install() {
     install -m 0644 ${WORKDIR}/claim.crt ${D}${CLAIM_DIR}/
     install -m 0600 ${WORKDIR}/claim.key ${D}${CLAIM_DIR}/
     install -m 0644 ${WORKDIR}/config.json ${D}${CLAIM_DIR}/
-    install -m 0600 ${WORKDIR}/nordvpn-token ${D}${CLAIM_DIR}/
 }
 
 FILES:${PN} = "${CLAIM_DIR}"

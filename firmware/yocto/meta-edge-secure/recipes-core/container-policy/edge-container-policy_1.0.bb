@@ -7,6 +7,7 @@ SRC_URI = " \
     file://edge-docker \
     file://container-signing.pub \
     file://ecr-url.txt \
+    file://daemon.json \
 "
 
 S = "${WORKDIR}"
@@ -24,10 +25,15 @@ do_install() {
     install -d ${D}/etc/edge-ai/container-config
     install -m 0644 ${WORKDIR}/container-signing.pub ${D}/etc/edge-ai/container-config/
     install -m 0644 ${WORKDIR}/ecr-url.txt ${D}/etc/edge-ai/container-config/
+
+    # Docker config - use /data/docker for storage (not tmpfs)
+    install -d ${D}${sysconfdir}/docker
+    install -m 0644 ${WORKDIR}/daemon.json ${D}${sysconfdir}/docker/
 }
 
 FILES:${PN} = " \
     ${bindir}/edge-docker \
     /etc/edge-ai/container-config \
+    ${sysconfdir}/docker \
 "
 

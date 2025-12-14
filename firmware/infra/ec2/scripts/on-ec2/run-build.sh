@@ -73,23 +73,6 @@ fetch_claim_certs() {
         return 1
     }
 
-    # Fetch NordVPN token (required)
-    local nordvpn_token
-    nordvpn_token=$(aws ssm get-parameter \
-        --name "/edge-ai/nordvpn-token" \
-        --with-decryption \
-        --query 'Parameter.Value' \
-        --output text 2>/dev/null || echo "")
-
-    if [ -z "$nordvpn_token" ] || [ "$nordvpn_token" = "PLACEHOLDER_SET_VIA_CONSOLE" ]; then
-        log_error "NordVPN token not configured in SSM at /edge-ai/nordvpn-token"
-        return 1
-    fi
-
-    echo "$nordvpn_token" > "$CLAIM_CERTS_DIR/nordvpn-token"
-    chmod 600 "$CLAIM_CERTS_DIR/nordvpn-token"
-    log_info "NordVPN token fetched"
-
     log_info "Claim certificates fetched successfully"
 }
 

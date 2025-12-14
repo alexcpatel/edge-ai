@@ -4,4 +4,3 @@ do_configure:append() {
     echo "CONFIG_R8169=y" >> ${B}/.config
     oe_runmake -C ${S} O=${B} olddefconfig
 }
-
