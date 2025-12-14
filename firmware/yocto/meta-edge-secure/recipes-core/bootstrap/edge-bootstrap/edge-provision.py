@@ -96,140 +96,124 @@ def generate_key_and_csr(thing_name):
 class FleetProvisioner:
     """Handles AWS IoT Fleet Provisioning via MQTT."""
 
-    def __init__(self, endpoint, template_name):
+    def __init__(self, endpoint, template_name, thing_name):
         self.endpoint = endpoint
         self.template_name = template_name
+        self.thing_name = thing_name
         self.response = None
         self.error = None
         self.response_event = threading.Event()
+        self.subscribed_count = 0
+        self.expected_subs = 0
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
-        if reason_code == 0:
-            log("Connected to AWS IoT")
-        else:
-            err(f"Connection failed with code {reason_code}")
+        if reason_code != 0:
+            err(f"Connection failed: {reason_code}")
             self.error = f"Connection failed: {reason_code}"
             self.response_event.set()
 
+    def _on_subscribe(self, client, userdata, mid, reason_codes, properties):
+        self.subscribed_count += 1
+
     def _on_message(self, client, userdata, msg):
-        topic = msg.topic
         try:
             payload = json.loads(msg.payload.decode())
-            if "/accepted" in topic:
+            if "/accepted" in msg.topic:
                 self.response = payload
-            elif "/rejected" in topic:
+            elif "/rejected" in msg.topic:
                 self.error = payload.get("errorMessage", str(payload))
             self.response_event.set()
         except Exception as e:
-            err(f"Failed to parse response: {e}")
             self.error = str(e)
             self.response_event.set()
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
-        if reason_code != 0:
-            err(f"Unexpected disconnect: {reason_code}")
+        if reason_code != 0 and not self.response_event.is_set():
+            self.error = f"Disconnected: {reason_code}"
+            self.response_event.set()
 
     def _create_client(self):
-        """Create and configure MQTT client."""
+        """Create MQTT client with explicit client ID (required for Fleet Provisioning)."""
         client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            protocol=mqtt.MQTTv311
+            protocol=mqtt.MQTTv311,
+            client_id=self.thing_name
         )
         client.on_connect = self._on_connect
+        client.on_subscribe = self._on_subscribe
         client.on_message = self._on_message
         client.on_disconnect = self._on_disconnect
 
-        ca_path = IOT_DIR / "AmazonRootCA1.pem"
         client.tls_set(
-            ca_certs=str(ca_path),
+            ca_certs=str(IOT_DIR / "AmazonRootCA1.pem"),
             certfile=str(CLAIM_DIR / "claim.crt"),
             keyfile=str(CLAIM_DIR / "claim.key"),
             tls_version=ssl.PROTOCOL_TLSv1_2
         )
-
         return client
 
-    def create_certificate_from_csr(self, csr_pem):
-        """Request certificate from Fleet Provisioning."""
-        log("Requesting certificate from Fleet Provisioning...")
-
+    def _mqtt_request(self, sub_topics, pub_topic, payload):
+        """Send MQTT request and wait for response."""
         client = self._create_client()
         self.response = None
         self.error = None
         self.response_event.clear()
+        self.subscribed_count = 0
+        self.expected_subs = len(sub_topics)
 
         client.connect(self.endpoint, 8883, keepalive=60)
         client.loop_start()
 
         try:
-            time.sleep(1)
-
-            # Subscribe to response topics
-            client.subscribe("$aws/certificates/create-from-csr/json/accepted")
-            client.subscribe("$aws/certificates/create-from-csr/json/rejected")
             time.sleep(0.5)
+            for topic in sub_topics:
+                client.subscribe(topic, qos=1)
 
-            # Publish CSR request
-            payload = json.dumps({"certificateSigningRequest": csr_pem})
-            client.publish("$aws/certificates/create-from-csr/json", payload)
+            # Wait for subscriptions
+            for _ in range(20):
+                if self.subscribed_count >= self.expected_subs:
+                    break
+                time.sleep(0.1)
 
-            # Wait for response
+            client.publish(pub_topic, json.dumps(payload), qos=1)
+
             if not self.response_event.wait(timeout=30):
-                raise TimeoutError("No response from Fleet Provisioning")
-
+                raise TimeoutError("No response received")
             if self.error:
-                raise RuntimeError(f"Fleet Provisioning error: {self.error}")
-
+                raise RuntimeError(self.error)
             return self.response
-
         finally:
             client.loop_stop()
             client.disconnect()
 
-    def register_thing(self, ownership_token, serial, mac, thing_name):
+    def create_certificate_from_csr(self, csr_pem):
+        """Request certificate from Fleet Provisioning."""
+        log("Requesting certificate from AWS IoT...")
+        return self._mqtt_request(
+            sub_topics=[
+                "$aws/certificates/create-from-csr/json/accepted",
+                "$aws/certificates/create-from-csr/json/rejected"
+            ],
+            pub_topic="$aws/certificates/create-from-csr/json",
+            payload={"certificateSigningRequest": csr_pem}
+        )
+
+    def register_thing(self, ownership_token, serial, mac):
         """Register thing using provisioning template."""
-        log(f"Registering thing with template: {self.template_name}")
-
-        client = self._create_client()
-        self.response = None
-        self.error = None
-        self.response_event.clear()
-
-        client.connect(self.endpoint, 8883, keepalive=60)
-        client.loop_start()
-
-        try:
-            time.sleep(1)
-
-            # Subscribe to response topics
-            topic_base = f"$aws/provisioning-templates/{self.template_name}/provision/json"
-            client.subscribe(f"{topic_base}/accepted")
-            client.subscribe(f"{topic_base}/rejected")
-            time.sleep(0.5)
-
-            # Publish registration request
-            payload = json.dumps({
+        log(f"Registering thing: {self.thing_name}")
+        topic_base = f"$aws/provisioning-templates/{self.template_name}/provision/json"
+        return self._mqtt_request(
+            sub_topics=[f"{topic_base}/accepted", f"{topic_base}/rejected"],
+            pub_topic=topic_base,
+            payload={
                 "certificateOwnershipToken": ownership_token,
                 "parameters": {
                     "SerialNumber": serial,
                     "MacAddress": mac,
-                    "ThingName": thing_name
+                    "ThingName": self.thing_name
                 }
-            })
-            client.publish(topic_base, payload)
-
-            # Wait for response
-            if not self.response_event.wait(timeout=30):
-                raise TimeoutError("No response from RegisterThing")
-
-            if self.error:
-                raise RuntimeError(f"RegisterThing error: {self.error}")
-
-            return self.response
-
-        finally:
-            client.loop_stop()
-            client.disconnect()
+            }
+        )
 
 
 def provision_device():
@@ -269,33 +253,28 @@ def provision_device():
     csr_pem = csr_path.read_text()
 
     # Fleet Provisioning
-    provisioner = FleetProvisioner(endpoint, template_name)
+    provisioner = FleetProvisioner(endpoint, template_name, thing_name)
 
     # Step 1: Create certificate from CSR
     cert_response = provisioner.create_certificate_from_csr(csr_pem)
-
     cert_pem = cert_response["certificatePem"]
-    cert_id = cert_response["certificateId"]
     ownership_token = cert_response["certificateOwnershipToken"]
+    log(f"Received certificate: {cert_response['certificateId'][:16]}...")
 
     # Save certificate
     cert_path = IOT_DIR / "device.crt"
     cert_path.write_text(cert_pem)
     cert_path.chmod(0o600)
 
-    log(f"Received certificate: {cert_id}")
-
     # Step 2: Register thing
     mac = get_mac_address()
-    thing_response = provisioner.register_thing(ownership_token, serial, mac, thing_name)
-
-    registered_thing = thing_response["thingName"]
-    log(f"Registered thing: {registered_thing}")
+    thing_response = provisioner.register_thing(ownership_token, serial, mac)
+    log(f"Registered thing: {thing_response['thingName']}")
 
     # Write final config
     config = {
         "endpoint": endpoint,
-        "thing_name": registered_thing,
+        "thing_name": thing_response["thingName"],
         "cert_path": str(cert_path),
         "key_path": str(key_path),
         "ca_path": str(IOT_DIR / "AmazonRootCA1.pem")
@@ -305,7 +284,7 @@ def provision_device():
         json.dump(config, f, indent=2)
     config_path.chmod(0o600)
 
-    log(f"Provisioning complete: {registered_thing}")
+    log("Provisioning complete")
     return True
 
 

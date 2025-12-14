@@ -25,6 +25,7 @@ IMAGE_INSTALL += " \
     ca-certificates \
     curl \
     wget \
+    chrony \
 "
 
 # Bootstrap and provisioning

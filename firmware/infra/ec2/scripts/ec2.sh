@@ -62,6 +62,9 @@ start_instance() {
     [ "$state" == "running" ] && { log_success "Instance is running"; return 0; }
     [ "$state" != "stopped" ] && { log_error "Instance is in state: $state (cannot start)"; exit 1; }
 
+    # Auto-restore data volume from snapshot if missing
+    restore_data_volume_if_needed "$id"
+
     log_info "Starting instance..."
     aws ec2 start-instances --region "$AWS_REGION" --instance-ids "$id" >/dev/null
     timeout 300 aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids "$id" || {
@@ -156,6 +159,63 @@ health_check() {
         echo ""
     fi
     get_instance_health_metrics "$id" 24
+}
+
+# Data volume management (auto-restore on start, auto-archive via Lambda after idle)
+get_data_volume_id() {
+    aws ec2 describe-volumes --region "$AWS_REGION" \
+        --filters "Name=tag:Name,Values=yocto-builder-data" "Name=status,Values=available,in-use" \
+        --query "Volumes[0].VolumeId" --output text 2>/dev/null || echo ""
+}
+
+get_latest_snapshot() {
+    aws ec2 describe-snapshots --region "$AWS_REGION" \
+        --filters "Name=tag:Name,Values=yocto-builder-data-snapshot" \
+        --query "Snapshots | sort_by(@, &StartTime) | [-1].SnapshotId" --output text 2>/dev/null || echo ""
+}
+
+restore_data_volume_if_needed() {
+    local instance_id="$1"
+
+    # Check if volume already exists and is attached
+    local vol_id=$(get_data_volume_id)
+    if [ -n "$vol_id" ] && [ "$vol_id" != "None" ]; then
+        return 0
+    fi
+
+    # Get latest snapshot
+    local snap_id=$(get_latest_snapshot)
+    if [ -z "$snap_id" ] || [ "$snap_id" == "None" ]; then
+        log_info "No data volume or snapshot found - will create fresh on setup"
+        return 0
+    fi
+
+    log_info "Data volume was archived, restoring from snapshot..."
+
+    # Get instance AZ
+    local az=$(aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$instance_id" \
+        --query "Reservations[0].Instances[0].Placement.AvailabilityZone" --output text)
+
+    # Create volume from snapshot
+    local new_vol=$(aws ec2 create-volume --region "$AWS_REGION" \
+        --availability-zone "$az" \
+        --snapshot-id "$snap_id" \
+        --volume-type gp3 \
+        --iops 3000 \
+        --throughput 125 \
+        --tag-specifications "ResourceType=volume,Tags=[{Key=Name,Value=yocto-builder-data}]" \
+        --query "VolumeId" --output text)
+
+    log_info "Waiting for volume $new_vol..."
+    aws ec2 wait volume-available --region "$AWS_REGION" --volume-ids "$new_vol"
+
+    log_info "Attaching volume..."
+    aws ec2 attach-volume --region "$AWS_REGION" \
+        --volume-id "$new_vol" \
+        --instance-id "$instance_id" \
+        --device /dev/sdf >/dev/null
+
+    log_success "Data volume restored from snapshot"
 }
 
 case "${1:-status}" in

@@ -1,7 +1,7 @@
 [Unit]
 Description=Edge AI First Boot Bootstrap
-After=network-online.target docker.service data.mount
-Wants=network-online.target
+After=network-online.target docker.service data.mount time-sync.target
+Wants=network-online.target time-sync.target
 Requires=docker.service data.mount
 
 [Service]

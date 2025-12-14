@@ -27,13 +27,29 @@ resource "aws_iam_role_policy" "fleet_provisioning" {
       {
         Effect = "Allow"
         Action = [
-          "iot:CreateThing",
-          "iot:CreateCertificateFromCsr",
-          "iot:RegisterCertificate",
+          "iot:AddThingToThingGroup",
+          "iot:AttachPrincipalPolicy",
           "iot:AttachThingPrincipal",
-          "iot:AttachPolicy",
+          "iot:CreateCertificateFromCsr",
+          "iot:CreatePolicy",
+          "iot:CreateThing",
+          "iot:DescribeCertificate",
           "iot:DescribeThing",
-          "iot:UpdateCertificate"
+          "iot:DescribeThingGroup",
+          "iot:DescribeThingType",
+          "iot:DetachThingPrincipal",
+          "iot:GetPolicy",
+          "iot:ListPolicyPrincipals",
+          "iot:ListPrincipalPolicies",
+          "iot:ListPrincipalThings",
+          "iot:ListThingGroupsForThing",
+          "iot:ListThingPrincipals",
+          "iot:RegisterCertificate",
+          "iot:RegisterThing",
+          "iot:RemoveThingFromThingGroup",
+          "iot:UpdateCertificate",
+          "iot:UpdateThing",
+          "iot:UpdateThingGroupsForThing"
         ]
         Resource = "*"
       }
@@ -162,7 +178,7 @@ resource "aws_iot_provisioning_template" "device" {
   })
 }
 
-# Claim Certificate Policy - limited permissions for bootstrap only
+# Claim Certificate Policy - minimal permissions for fleet provisioning only
 resource "aws_iot_policy" "claim_cert" {
   name = "edge-ai-claim-cert-policy"
 
@@ -176,18 +192,30 @@ resource "aws_iot_policy" "claim_cert" {
       },
       {
         Effect = "Allow"
-        Action = ["iot:Publish", "iot:Receive"]
+        Action = ["iot:Publish"]
         Resource = [
-          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/certificates/create-from-csr/*",
-          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/provisioning-templates/${var.fleet_provisioning_template_name}/provision/*"
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/certificates/create-from-csr/json",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/provisioning-templates/${var.fleet_provisioning_template_name}/provision/json"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = ["iot:Receive"]
+        Resource = [
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/certificates/create-from-csr/json/accepted",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/certificates/create-from-csr/json/rejected",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/provisioning-templates/${var.fleet_provisioning_template_name}/provision/json/accepted",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topic/$aws/provisioning-templates/${var.fleet_provisioning_template_name}/provision/json/rejected"
         ]
       },
       {
         Effect = "Allow"
         Action = ["iot:Subscribe"]
         Resource = [
-          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/certificates/create-from-csr/*",
-          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/provisioning-templates/${var.fleet_provisioning_template_name}/provision/*"
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/certificates/create-from-csr/json/accepted",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/certificates/create-from-csr/json/rejected",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/provisioning-templates/${var.fleet_provisioning_template_name}/provision/json/accepted",
+          "arn:aws:iot:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:topicfilter/$aws/provisioning-templates/${var.fleet_provisioning_template_name}/provision/json/rejected"
         ]
       }
     ]

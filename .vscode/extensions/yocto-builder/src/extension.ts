@@ -461,7 +461,8 @@ class YoctoBuilderPanel {
         return new Promise((resolve) => {
             const terminal = vscode.window.createTerminal(terminalName);
             terminal.show();
-            terminal.sendText(`${command}; exit $?`);
+            // On success: exit normally. On failure: keep terminal open for inspection.
+            terminal.sendText(`${command} && exit 0`);
 
             const disposable = vscode.window.onDidCloseTerminal(closedTerminal => {
                 if (closedTerminal === terminal) {
@@ -611,11 +612,11 @@ class YoctoBuilderPanel {
                         <td>When</td><td style="text-align:right">Duration</td><td style="text-align:right">Cost</td>
                     </tr>
                     ${costData.runs.slice().reverse().map(r => {
-                        const costStr = r.cost < 0.01 ? r.cost.toFixed(3) : r.cost.toFixed(2);
-                        return `<tr>
+                const costStr = r.cost < 0.01 ? r.cost.toFixed(3) : r.cost.toFixed(2);
+                return `<tr>
                         <td>${this.formatRelativeTime(r.start)}</td><td style="text-align:right">${this.formatDurationShort(r.duration_secs)}</td><td style="text-align:right">$${costStr}</td>
                     </tr>`;
-                    }).join('')}
+            }).join('')}
                 </table>
             </div>`;
         } else if (!costData.error) {
