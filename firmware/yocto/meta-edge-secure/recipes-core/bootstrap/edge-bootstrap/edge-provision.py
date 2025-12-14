@@ -16,6 +16,8 @@ from pathlib import Path
 import paho.mqtt.client as mqtt
 
 IOT_DIR = Path("/data/config/aws-iot")
+PKI_DIR = Path("/data/config/pki")
+ECR_DIR = Path("/data/config/ecr")
 CLAIM_DIR = Path("/etc/edge-ai/claim")
 AMAZON_ROOT_CA_URL = "https://www.amazontrust.com/repository/AmazonRootCA1.pem"
 

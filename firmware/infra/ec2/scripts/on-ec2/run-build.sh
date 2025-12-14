@@ -26,6 +26,7 @@ echo "$BUILD_START_TIME" > /tmp/build-start-time
 YOCTO_DIR="${YOCTO_DIR:-$HOME/yocto-tegra}"
 SOURCE_DIR="${YOCTO_DIR}/edge-ai"
 CLAIM_CERTS_DIR="$SOURCE_DIR/firmware/yocto/meta-edge-secure/recipes-core/claim-certs/edge-claim-certs"
+CONTAINER_CONFIG_DIR="$SOURCE_DIR/firmware/yocto/meta-edge-secure/recipes-core/container-policy/edge-container-policy"
 
 log_info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2; }
@@ -92,11 +93,43 @@ fetch_claim_certs() {
     log_info "Claim certificates fetched successfully"
 }
 
+# Fetch container signing config from SSM
+fetch_container_config() {
+    log_info "Fetching container signing config from SSM..."
+
+    mkdir -p "$CONTAINER_CONFIG_DIR"
+
+    # Fetch container signing public key (optional - may not exist yet)
+    if aws ssm get-parameter \
+        --name "/edge-ai/pki/container-signing-public-key" \
+        --query 'Parameter.Value' \
+        --output text > "$CONTAINER_CONFIG_DIR/container-signing.pub" 2>/dev/null; then
+        log_info "Container signing public key fetched"
+    else
+        log_info "Container signing public key not found in SSM (run terraform apply in backend/iot/terraform)"
+        # Create placeholder so build doesn't fail
+        echo "# Container signing not configured yet" > "$CONTAINER_CONFIG_DIR/container-signing.pub"
+    fi
+
+    # Fetch ECR repository URL (optional - may not exist yet)
+    if aws ssm get-parameter \
+        --name "/edge-ai/ecr/repository-url" \
+        --query 'Parameter.Value' \
+        --output text > "$CONTAINER_CONFIG_DIR/ecr-url.txt" 2>/dev/null; then
+        log_info "ECR repository URL fetched"
+    else
+        log_info "ECR repository URL not found in SSM (run terraform apply in backend/iot/terraform)"
+        echo "# ECR not configured yet" > "$CONTAINER_CONFIG_DIR/ecr-url.txt"
+    fi
+}
+
 # Main execution
 fetch_claim_certs || {
     log_error "Claim cert fetch failed - cannot build without credentials"
     exit 1
 }
+
+fetch_container_config
 
 cd "$YOCTO_DIR"
 
@@ -119,6 +152,9 @@ ln -sfn "$ACTUAL_LAYER" "$EXPECTED_LAYER" 2>/dev/null || true
 # Run the build (tee to both log file and stdout so errors are visible)
 kas build --update "$KAS_CONFIG" 2>&1 | tee -a "$LOG_FILE"
 BUILD_EXIT="${PIPESTATUS[0]}"
+
+# Write exit code for watch-build.sh to read
+echo "$BUILD_EXIT" > /tmp/yocto-build-exit
 
 exit "$BUILD_EXIT"
 

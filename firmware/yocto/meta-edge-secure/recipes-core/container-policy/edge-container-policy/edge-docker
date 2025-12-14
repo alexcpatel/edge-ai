@@ -1,0 +1,193 @@
+#!/bin/bash
+# edge-docker: Docker wrapper with signature verification and mount enforcement
+#
+# Rules:
+# - ECR images: must have valid cosign signature
+# - sandbox/* images: allowed without signature, can mount /data/sandbox/
+# - Signed images: can only mount /data/apps/<image-name>/
+#
+# Usage: edge-docker <docker-command> [args...]
+
+set -euo pipefail
+
+# Use writable locations (rootfs is read-only)
+export HOME="/data"
+export DOCKER_CONFIG="/data/.docker"
+
+COSIGN_PUBLIC_KEY="/data/config/pki/container-signing.pub"
+ECR_CONFIG="/data/config/ecr/config.json"
+LOG_TAG="edge-docker"
+
+log() { echo "[${LOG_TAG}] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
+err() { echo "[${LOG_TAG}] $(date '+%Y-%m-%d %H:%M:%S') ERROR: $*" >&2; }
+die() { err "$*"; exit 1; }
+
+# Check if image is from ECR
+is_ecr_image() {
+    local image="$1"
+    [[ "$image" == *".dkr.ecr."*".amazonaws.com/"* ]]
+}
+
+# Check if image is sandbox
+is_sandbox_image() {
+    local image="$1"
+    [[ "$image" == "sandbox/"* ]] || [[ "$image" == "sandbox:"* ]]
+}
+
+# Extract image name without tag/registry
+get_image_name() {
+    local image="$1"
+    # Remove registry prefix
+    local name="${image##*/}"
+    # Remove tag
+    name="${name%%:*}"
+    echo "$name"
+}
+
+# Verify cosign signature
+verify_signature() {
+    local image="$1"
+
+    if [ ! -f "$COSIGN_PUBLIC_KEY" ]; then
+        die "Container signing public key not found: $COSIGN_PUBLIC_KEY"
+    fi
+
+    log "Verifying signature for: $image"
+
+    if ! cosign verify --key "$COSIGN_PUBLIC_KEY" "$image" >/dev/null 2>&1; then
+        die "Signature verification failed for: $image"
+    fi
+
+    log "Signature verified: $image"
+}
+
+# Validate mount paths for container type
+validate_mounts() {
+    local image="$1"
+    shift
+    local args=("$@")
+
+    local is_sandbox=false
+    is_sandbox_image "$image" && is_sandbox=true
+
+    local image_name
+    image_name=$(get_image_name "$image")
+
+    for arg in "${args[@]}"; do
+        # Check for -v or --volume mounts
+        if [[ "$arg" == "-v" ]] || [[ "$arg" == "--volume" ]]; then
+            continue
+        fi
+
+        # Check mount specifications (host:container format)
+        if [[ "$arg" == *":"* ]] && [[ "$arg" == "/"* ]]; then
+            local host_path="${arg%%:*}"
+
+            if $is_sandbox; then
+                # Sandbox can only mount /data/sandbox/*
+                if [[ "$host_path" != "/data/sandbox"* ]]; then
+                    die "Sandbox containers can only mount /data/sandbox/*: $host_path"
+                fi
+            else
+                # Signed images can only mount /data/apps/<image-name>/*
+                local allowed_prefix="/data/apps/${image_name}"
+                if [[ "$host_path" != "${allowed_prefix}"* ]]; then
+                    die "Signed containers can only mount ${allowed_prefix}/*: $host_path"
+                fi
+            fi
+        fi
+    done
+}
+
+# Handle docker pull with signature verification
+handle_pull() {
+    local image="${1:-}"
+    [ -z "$image" ] && die "No image specified for pull"
+
+    if is_ecr_image "$image"; then
+        # Pull first, then verify
+        log "Pulling from ECR: $image"
+        docker pull "$image"
+        verify_signature "$image"
+    elif is_sandbox_image "$image"; then
+        die "Cannot pull sandbox images - build locally with: docker build -t sandbox/name ."
+    else
+        die "Unknown image source. Use ECR images or sandbox/* for local development"
+    fi
+}
+
+# Handle docker run with policy enforcement
+handle_run() {
+    local args=("$@")
+    local image=""
+
+    # Find the image in args (first arg that looks like an image name)
+    for arg in "${args[@]}"; do
+        # Skip flags and their values
+        [[ "$arg" == -* ]] && continue
+        [[ "$arg" == *"="* ]] && continue
+        # First non-flag is likely the image
+        if [[ -n "$arg" ]]; then
+            image="$arg"
+            break
+        fi
+    done
+
+    [ -z "$image" ] && die "Could not determine image from arguments"
+
+    if is_ecr_image "$image"; then
+        # Verify signature before running
+        verify_signature "$image"
+        validate_mounts "$image" "${args[@]}"
+        log "Running signed container: $image"
+        docker run "${args[@]}"
+    elif is_sandbox_image "$image"; then
+        validate_mounts "$image" "${args[@]}"
+        log "Running sandbox container: $image"
+        docker run "${args[@]}"
+    else
+        die "Unknown image source: $image. Use ECR images or sandbox/* for local"
+    fi
+}
+
+# Main
+main() {
+    local cmd="${1:-}"
+    shift || true
+
+    case "$cmd" in
+        pull)
+            handle_pull "$@"
+            ;;
+        run)
+            handle_run "$@"
+            ;;
+        build)
+            # Allow builds, but enforce sandbox prefix for local images
+            if [[ "$*" != *"-t sandbox/"* ]] && [[ "$*" != *"--tag sandbox/"* ]]; then
+                err "Local builds must use sandbox/ prefix: docker build -t sandbox/myapp ."
+                err "For production images, push to ECR and sign with cosign"
+                exit 1
+            fi
+            docker build "$@"
+            ;;
+        load)
+            # Allow loading tarballs as sandbox images
+            log "Loading tarball - image will be treated as sandbox"
+            docker load "$@"
+            log "Remember to tag as sandbox/*: docker tag <image> sandbox/<name>"
+            ;;
+        push|tag|images|ps|logs|exec|stop|rm|rmi|inspect|system)
+            # Pass through safe commands
+            docker "$cmd" "$@"
+            ;;
+        *)
+            err "Unknown or restricted command: $cmd"
+            err "Allowed: pull, run, build, load, push, tag, images, ps, logs, exec, stop, rm, rmi, inspect, system"
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
+

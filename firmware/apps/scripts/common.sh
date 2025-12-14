@@ -1,27 +1,53 @@
 #!/bin/bash
+# Common utilities for edge-ai app management
+
 set -euo pipefail
-IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+APPS_DIR="$REPO_ROOT/firmware/apps"
 
-log_info()  { echo "[apps] $*"; }
-log_error() { echo "[apps] ERROR: $*" >&2; }
+AWS_REGION="${AWS_REGION:-us-east-2}"
+
+log()     { echo "[edge-app] $*"; }
+log_err() { echo "[edge-app] ERROR: $*" >&2; }
+die()     { log_err "$*"; exit 1; }
+
+get_ecr_url() {
+    aws ssm get-parameter \
+        --name "/edge-ai/ecr/repository-url" \
+        --region "$AWS_REGION" \
+        --query "Parameter.Value" \
+        --output text
+}
+
+ecr_login() {
+    local ecr_url
+    ecr_url=$(get_ecr_url)
+    local registry="${ecr_url%%/*}"
+
+    log "Logging into ECR..."
+    aws ecr get-login-password --region "$AWS_REGION" | \
+        docker login --username AWS --password-stdin "$registry" >/dev/null
+}
+
+ssh_device() {
+    local device="$1"
+    shift
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "root@${device}" "$@"
+}
 
 check_device() {
-    local host="$1"
-    local user="${2:-root}"
-
-    if [ -z "$host" ]; then
-        log_error "DEVICE_HOST is required"
-        exit 1
-    fi
-
-    local target="${user}@${host}"
-    if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$target" "echo ok" >/dev/null 2>&1; then
-        log_error "Unable to reach ${target}"
-        exit 1
+    local device="$1"
+    if ! ssh_device "$device" "echo ok" >/dev/null 2>&1; then
+        die "Cannot reach device: $device"
     fi
 }
 
-
+get_app_image_tag() {
+    local app="$1"
+    local version="${2:-latest}"
+    local ecr_url
+    ecr_url=$(get_ecr_url)
+    echo "${ecr_url}:${app}-${version}"
+}

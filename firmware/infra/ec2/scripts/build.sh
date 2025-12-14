@@ -118,9 +118,15 @@ watch_build() {
     }
 
     log_info "Watching build log (EC2 will upload to S3 and stop automatically)..."
-    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/watch-build.sh" || true
+    local watch_exit=0
+    ssh_cmd "$ip" "bash ${REMOTE_SOURCE_DIR}/firmware/infra/ec2/scripts/on-ec2/watch-build.sh" || watch_exit=$?
 
-    log_info "Watch ended"
+    if [ "$watch_exit" -ne 0 ]; then
+        log_error "Build failed (exit code: $watch_exit)"
+        return "$watch_exit"
+    fi
+
+    log_info "Build completed successfully"
 }
 
 terminate_build() {

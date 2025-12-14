@@ -109,15 +109,29 @@ firmware-flash-terminate: ## Terminate flash session
 # Combined build + flash (full automated workflow)
 firmware-build-flash: firmware-build firmware-flash ## Build image then flash Jetson (MODE=bootloader|rootfs)
 
-# App management on device
-# firmware-app-deploy: ## Deploy app container to device (APP=, DEVICE_HOST=, DEVICE_USER=)
-# 	@$(APPS_SCRIPTS_DIR)/app-deploy.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+# App management (edge-app.sh wrapper)
+EDGE_APP := firmware/apps/edge-app.sh
 
-# firmware-app-stop: ## Stop and disable app on device (APP=, DEVICE_HOST=, DEVICE_USER=)
-# 	@$(APPS_SCRIPTS_DIR)/app-stop.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+firmware-app-list: ## List available apps
+	@$(EDGE_APP) list
 
-# firmware-app-logs: ## Tail app logs on device (APP=, DEVICE_HOST=, DEVICE_USER=)
-# 	@$(APPS_SCRIPTS_DIR)/app-logs.sh "$(APP)" "$(DEVICE_HOST)" "$(DEVICE_USER)"
+firmware-app-build: ## Build app container (APP=)
+	@$(EDGE_APP) build $(APP)
 
-# firmware-device-check: ## Check that Jetson is reachable (DEVICE_HOST=, DEVICE_USER=)
-# 	@$(APPS_SCRIPTS_DIR)/device-check.sh "$(DEVICE_HOST)" "$(DEVICE_USER)"
+firmware-app-push: ## Push app to ECR and sign (APP=, VERSION=latest)
+	@$(EDGE_APP) push $(APP) $(or $(VERSION),latest)
+
+firmware-app-deploy: ## Deploy signed app to device (APP=, DEVICE=, VERSION=latest)
+	@$(EDGE_APP) deploy $(APP) $(DEVICE) $(or $(VERSION),latest)
+
+firmware-app-sandbox: ## Deploy app as sandbox for development (APP=, DEVICE=)
+	@$(EDGE_APP) sandbox $(APP) $(DEVICE)
+
+firmware-app-logs: ## View app logs on device (APP=, DEVICE=, FOLLOW=-f for live)
+	@$(EDGE_APP) logs $(APP) $(DEVICE) $(FOLLOW)
+
+firmware-app-stop: ## Stop app on device (APP=, DEVICE=)
+	@$(EDGE_APP) stop $(APP) $(DEVICE)
+
+firmware-app-remove: ## Remove app and data from device (APP=, DEVICE=)
+	@$(EDGE_APP) remove $(APP) $(DEVICE)

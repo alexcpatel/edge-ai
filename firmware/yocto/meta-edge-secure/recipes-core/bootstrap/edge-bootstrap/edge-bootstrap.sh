@@ -19,6 +19,17 @@ setup_data_partition() {
     mkdir -p "$DATA_DIR/config"
     mkdir -p "$DATA_DIR/docker"
     mkdir -p "$DATA_DIR/log"
+    mkdir -p "$DATA_DIR/sandbox"  # For unsigned dev containers
+
+    # Copy container config from rootfs to data partition (idempotent)
+    mkdir -p "$DATA_DIR/config/pki"
+    mkdir -p "$DATA_DIR/config/ecr"
+    if [ -f /etc/edge-ai/container-config/container-signing.pub ]; then
+        cp -n /etc/edge-ai/container-config/container-signing.pub "$DATA_DIR/config/pki/" 2>/dev/null || true
+    fi
+    if [ -f /etc/edge-ai/container-config/ecr-url.txt ]; then
+        cp -n /etc/edge-ai/container-config/ecr-url.txt "$DATA_DIR/config/ecr/" 2>/dev/null || true
+    fi
 }
 
 main() {

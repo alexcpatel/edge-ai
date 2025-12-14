@@ -4,9 +4,11 @@ IFS=$'\n\t'
 
 # Watch build log and stop when build completes or errors
 # This script runs on the remote EC2 instance
+# Exit code: 0 = build succeeded, 1 = build failed
 
 LOG_FILE="/tmp/yocto-build.log"
 SESSION_NAME="yocto-build"
+EXIT_CODE_FILE="/tmp/yocto-build-exit"
 
 # Wait for log file to exist (build might have just started)
 # Add timeout to prevent infinite waiting
@@ -50,3 +52,16 @@ MONITOR_PID=$!
 # Wait for tail to finish (will be killed when session ends)
 wait "$TAIL_PID" 2>/dev/null || true
 kill "$MONITOR_PID" 2>/dev/null || true
+
+# Check build exit code (written by run-build.sh)
+if [ -f "$EXIT_CODE_FILE" ]; then
+    BUILD_EXIT=$(cat "$EXIT_CODE_FILE")
+    exit "$BUILD_EXIT"
+fi
+
+# Fallback: check log for error indicators
+if grep -q "^ERROR:" "$LOG_FILE" 2>/dev/null; then
+    exit 1
+fi
+
+exit 0

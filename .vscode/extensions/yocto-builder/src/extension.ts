@@ -428,29 +428,32 @@ class YoctoBuilderPanel {
         };
         this.update();
 
-        // Run build
-        const buildSuccess = await this.runCommandAsync('make firmware-build', 'Yocto Builder - Build');
+        // Run build - shell scripts propagate exit code on failure
+        await this.runCommandAsync('make firmware-build', 'Yocto Builder - Build');
 
-        const state = YoctoBuilderPanel._workflowState;
-        state.buildEndTime = Date.now();
-
-        if (!buildSuccess) {
-            state.buildFailed = true;
-            state.phase = 'idle';
-            this.update();
+        // Re-read state - runCommandAsync sets phase to 'idle' on failure/cancel
+        let state = YoctoBuilderPanel._workflowState;
+        if (state.phase === 'idle') {
             return;
         }
+
+        state.buildEndTime = Date.now();
 
         // Run flash
         state.phase = 'flash';
         state.flashStartTime = Date.now();
         this.update();
 
-        const flashSuccess = await this.runCommandAsync('make firmware-flash', 'Yocto Builder - Flash');
+        await this.runCommandAsync('make firmware-flash', 'Yocto Builder - Flash');
+
+        // Re-read state
+        state = YoctoBuilderPanel._workflowState;
+        if (state.phase === 'idle') {
+            return;
+        }
 
         state.flashEndTime = Date.now();
-        state.flashFailed = !flashSuccess;
-        state.phase = flashSuccess ? 'complete' : 'idle';
+        state.phase = 'complete';
 
         // Save run times for future estimates
         this.saveRunTimes();
@@ -467,8 +470,24 @@ class YoctoBuilderPanel {
             const disposable = vscode.window.onDidCloseTerminal(closedTerminal => {
                 if (closedTerminal === terminal) {
                     disposable.dispose();
-                    // exitStatus is undefined if user closes terminal, treat as failure
-                    resolve(closedTerminal.exitStatus?.code === 0);
+                    const exitCode = closedTerminal.exitStatus?.code;
+                    const success = exitCode === 0;
+
+                    // If terminal was closed (user cancelled) or command failed, reset workflow
+                    if (!success) {
+                        const state = YoctoBuilderPanel._workflowState;
+                        if (state.phase === 'build') {
+                            state.buildFailed = true;
+                            state.buildEndTime = Date.now();
+                        } else if (state.phase === 'flash') {
+                            state.flashFailed = true;
+                            state.flashEndTime = Date.now();
+                        }
+                        state.phase = 'idle';
+                        this.update();
+                    }
+
+                    resolve(success);
                 }
             });
         });

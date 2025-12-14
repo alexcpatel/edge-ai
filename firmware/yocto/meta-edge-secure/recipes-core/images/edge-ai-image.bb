@@ -34,6 +34,7 @@ IMAGE_INSTALL += " \
     edge-bootstrap \
     edge-heartbeat \
     edge-claim-certs \
+    edge-container-policy \
     systemd-data-services-generator \
     jq \
     openssl \
