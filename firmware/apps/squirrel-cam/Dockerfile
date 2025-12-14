@@ -1,4 +1,4 @@
-# Animal Detector - Edge AI inference
+# Squirrel Cam - Edge AI inference for Blink camera clips
 #
 # Base options (swap as needed):
 #   - python:3.11-slim (~150MB, for testing workflow)
@@ -9,10 +9,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install Python dependencies (use standard PyPI, not Jetson custom indexes)
+# Install Python dependencies
 RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple/ \
     paho-mqtt \
-    requests
+    requests \
+    watchdog
 
 # Copy application code
 COPY app/ /app/
@@ -20,6 +21,7 @@ COPY app/ /app/
 # Config and model paths (mounted from /data on device)
 ENV CONFIG_PATH=/data/config.json
 ENV MODEL_PATH=/data/model
+ENV CLIPS_PATH=/data/clips
 ENV PYTHONUNBUFFERED=1
 
 # Health check

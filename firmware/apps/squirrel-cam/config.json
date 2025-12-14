@@ -1,0 +1,15 @@
+{
+  "detection_threshold": 0.5,
+  "clips_path": "/data/clips",
+  "mqtt_broker": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_topic": "homeassistant/sensor/squirrel_cam/state",
+  "classes": [
+    "squirrel",
+    "chipmunk",
+    "bird",
+    "cat",
+    "raccoon"
+  ],
+  "min_detection_interval_sec": 10
+}

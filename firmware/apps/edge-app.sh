@@ -11,10 +11,10 @@
 #   list                           List available apps
 #
 # Examples:
-#   edge-app build animal-detector
-#   edge-app push animal-detector v1
-#   edge-app deploy animal-detector 192.168.1.100 v1
-#   edge-app sandbox animal-detector edge-ai.local
+#   edge-app build squirrel-cam
+#   edge-app push squirrel-cam v1
+#   edge-app deploy squirrel-cam 192.168.1.100 v1
+#   edge-app sandbox homeassistant edge-ai.local  # GUI at :8123
 
 set -euo pipefail
 
@@ -155,6 +155,29 @@ cmd_sandbox() {
     scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         "$tarball" "root@${device}:/tmp/"
 
+    # Read app-specific docker args from sandbox.json if present
+    local extra_args=""
+    local sandbox_config="$app_dir/sandbox.json"
+    if [ -f "$sandbox_config" ]; then
+        # Parse docker_args array from JSON
+        extra_args=$(python3 -c "
+import json, sys
+with open('$sandbox_config') as f:
+    cfg = json.load(f)
+args = cfg.get('docker_args', [])
+print(' '.join(args))
+" 2>/dev/null || echo "")
+        [ -n "$extra_args" ] && log "Using custom args: $extra_args"
+    fi
+
+    # Determine mount path based on app type
+    local mount_path="/data"
+    local container_mount="/data"
+    if echo "$extra_args" | grep -q -- "--privileged"; then
+        # Home Assistant style apps mount config to /config
+        container_mount="/config"
+    fi
+
     ssh_device "$device" "
         set -euo pipefail
 
@@ -169,11 +192,12 @@ cmd_sandbox() {
         # Create sandbox directory
         mkdir -p /data/sandbox/$app
 
-        # Run as sandbox (mounts /data/sandbox for live editing)
+        # Run as sandbox with app-specific args
         docker run -d \\
             --name 'sandbox-$app' \\
             --restart unless-stopped \\
-            -v /data/sandbox/$app:/data \\
+            -v /data/sandbox/$app:$container_mount \\
+            $extra_args \\
             'sandbox/$app:dev'
 
         echo 'Sandbox container started'
@@ -181,6 +205,21 @@ cmd_sandbox() {
     "
 
     rm -f "$tarball"
+
+    # Show access info if ports are defined
+    if [ -f "$sandbox_config" ]; then
+        local notes
+        notes=$(python3 -c "
+import json
+with open('$sandbox_config') as f:
+    cfg = json.load(f)
+notes = cfg.get('notes', '')
+if notes:
+    print(notes.replace('<device-ip>', '$device'))
+" 2>/dev/null || echo "")
+        [ -n "$notes" ] && log "$notes"
+    fi
+
     log "Sandbox deployed. SSH to device and edit /data/sandbox/$app"
 }
 
@@ -266,13 +305,17 @@ Commands:
 
 Workflow:
   # Production: build → sign → deploy
-  edge-app build animal-detector
-  edge-app push animal-detector v1
-  edge-app deploy animal-detector mydevice.local v1
+  edge-app build squirrel-cam
+  edge-app push squirrel-cam v1
+  edge-app deploy squirrel-cam mydevice.local v1
 
   # Development: sandbox (no signing required)
-  edge-app sandbox animal-detector mydevice.local
-  # Then SSH to device and edit /data/sandbox/animal-detector/
+  edge-app sandbox squirrel-cam mydevice.local
+  # Then SSH to device and edit /data/sandbox/squirrel-cam/
+
+  # Home Assistant
+  edge-app sandbox homeassistant mydevice.local
+  # Open http://mydevice.local:8123 in browser
 
 Environment:
   AWS_REGION    AWS region (default: us-east-2)

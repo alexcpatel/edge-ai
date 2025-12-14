@@ -45,12 +45,16 @@
 - [x] Updated kas.yml for edge-ai-image target
 - [x] Container builds with docker buildx (ARM64 cross-compile)
 
+### IoT Connectivity
+
+- [x] Test heartbeat service
+- [x] AWS IoT Provisioning and MQTT setup
+
+### App Development
+
+- [x] Verify container deployment workflow
+
 ## 🔲 Remaining
-
-### Device Verification
-
-- [ ] Test heartbeat service
-- [ ] Verify container deployment workflow
 
 ### Future Enhancements
 
@@ -89,12 +93,12 @@
 
 ```bash
 # Development (unsigned, quick iteration)
-make firmware-app-sandbox APP=animal-detector DEVICE=192.168.86.34
-# Edit /data/sandbox/animal-detector/ on device for live changes
+make firmware-app-sandbox APP=squirrel-cam DEVICE=192.168.86.34
+# Edit /data/sandbox/squirrel-cam/ on device for live changes
 
 # Production (signed, verified)
-make firmware-app-push APP=animal-detector VERSION=v1
-make firmware-app-deploy APP=animal-detector DEVICE=192.168.86.34 VERSION=v1
+make firmware-app-push APP=squirrel-cam VERSION=v1
+make firmware-app-deploy APP=squirrel-cam DEVICE=192.168.86.34 VERSION=v1
 ```
 
 ## First Boot Flow

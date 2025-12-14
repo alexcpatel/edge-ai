@@ -1,0 +1,7 @@
+{
+  "docker_args": [
+    "-v",
+    "/data/shared/clips:/data/clips"
+  ],
+  "notes": "Watches /data/shared/clips for Blink motion clips from Home Assistant"
+}

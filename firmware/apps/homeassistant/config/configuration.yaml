@@ -1,0 +1,47 @@
+# Home Assistant Configuration
+# This file is copied on first boot - edit on device or sync back to codebase
+
+homeassistant:
+  name: Edge AI Home
+  unit_system: imperial
+  time_zone: America/New_York
+  currency: USD
+
+# Enable the default frontend
+default_config:
+
+# HTTP settings (accessible on port 8123)
+http:
+  server_port: 8123
+
+# Logging
+logger:
+  default: info
+  logs:
+    homeassistant.components.mqtt: debug
+    homeassistant.components.blink: debug
+
+# MQTT broker (for squirrel-cam integration)
+mqtt:
+  broker: localhost
+  port: 1883
+  discovery: true
+  discovery_prefix: homeassistant
+
+# Blink cameras - add via UI: Settings > Devices & Services > Add Integration > Blink
+# After setup, cameras will appear as camera.blink_* entities
+
+# Shell commands for saving Blink clips
+shell_command:
+  save_blink_clip: >
+    curl -s -o /config/clips/blink_{{ now().strftime('%Y%m%d_%H%M%S') }}.mp4
+    "{{ states.camera.blink_backyard.attributes.video_url | default('') }}"
+
+# Automations
+automation: !include automations.yaml
+
+# Scripts
+script: !include scripts.yaml
+
+# Scenes
+scene: !include scenes.yaml

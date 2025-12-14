@@ -1,0 +1,32 @@
+# Automations - managed via UI or edit directly
+
+# Save Blink camera clips when motion detected
+- id: save_blink_motion_clip
+  alias: "Save Blink Motion Clip"
+  description: "Download Blink clip when motion detected, for squirrel-cam processing"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.blink_backyard_motion_detected
+      to: "on"
+  condition: []
+  action:
+    - delay:
+        seconds: 10  # Wait for clip to be available
+    - service: shell_command.save_blink_clip
+  mode: single
+
+# Notify when squirrel detected
+- id: squirrel_detected_notify
+  alias: "Squirrel Detected Notification"
+  description: "Send notification when squirrel-cam detects a squirrel"
+  trigger:
+    - platform: mqtt
+      topic: "homeassistant/sensor/squirrel_cam/state"
+      payload: "squirrel"
+  condition: []
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "🐿️ Squirrel Detected!"
+        message: "Squirrel spotted by edge AI camera"
+  mode: single

@@ -135,3 +135,7 @@ firmware-app-stop: ## Stop app on device (APP=, DEVICE=)
 
 firmware-app-remove: ## Remove app and data from device (APP=, DEVICE=)
 	@$(EDGE_APP) remove $(APP) $(DEVICE)
+
+# Full stack deployment
+firmware-deploy-all-sandbox: ## Deploy all sandbox containers to device (DEVICE=)
+	@firmware/apps/deploy.sh $(DEVICE)
