@@ -138,4 +138,4 @@ firmware-app-remove: ## Remove app and data from device (APP=, DEVICE=)
 
 # Full stack deployment
 firmware-deploy-all-sandbox: ## Deploy all sandbox containers to device (DEVICE=)
-	@firmware/apps/deploy.sh $(DEVICE)
+	@firmware/apps/deploy-all-sandbox.sh $(DEVICE)
