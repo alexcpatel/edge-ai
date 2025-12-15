@@ -1,0 +1,78 @@
+# Squirrel Cam - DeepStream ML Pipeline
+# Run with: docker compose up
+#
+# Services:
+#   go2rtc    - RTSP proxy for Blink cameras
+#   deepstream - GPU inference with YOLOv8
+#   app       - Detection event handler
+
+services:
+  go2rtc:
+    build: ./go2rtc
+    container_name: squirrel-go2rtc
+    restart: unless-stopped
+    ports:
+      - "8554:8554"   # RTSP
+      - "1984:1984"   # Web UI / API
+    volumes:
+      - ./go2rtc/config.yaml:/config/go2rtc.yaml:ro
+      - ./test-videos:/videos:ro
+    environment:
+      - BLINK_USERNAME=${BLINK_USERNAME:-}
+      - BLINK_PASSWORD=${BLINK_PASSWORD:-}
+    networks:
+      - squirrel-net
+
+  deepstream:
+    build: ./deepstream
+    container_name: squirrel-deepstream
+    restart: unless-stopped
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./deepstream/config:/config:ro
+      - ./deepstream/models:/models
+      - ./test-videos:/videos:ro
+      - detection-socket:/tmp
+    environment:
+      - SOURCE_URI=${SOURCE_URI:-rtsp://go2rtc:8554/test}
+      - DETECTION_THRESHOLD=${DETECTION_THRESHOLD:-0.5}
+      - SOCKET_PATH=/tmp/detections.sock
+    depends_on:
+      - go2rtc
+    networks:
+      - squirrel-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: squirrel-app
+    restart: unless-stopped
+    volumes:
+      - app-data:/data
+      - detection-socket:/tmp
+    environment:
+      - CONFIG_PATH=/data/config.json
+      - CREDENTIALS_PATH=/data/credentials.json
+      - CLIPS_PATH=/data/clips
+      - SOCKET_PATH=/tmp/detections.sock
+      - DETECTION_MODE=stream
+    depends_on:
+      - deepstream
+    networks:
+      - squirrel-net
+
+networks:
+  squirrel-net:
+    driver: bridge
+
+volumes:
+  app-data:
+  detection-socket:

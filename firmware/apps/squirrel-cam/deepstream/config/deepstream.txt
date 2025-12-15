@@ -1,0 +1,92 @@
+# DeepStream Pipeline Configuration
+# For RTSP input with YOLOv8 inference on Jetson Orin
+
+[application]
+enable-perf-measurement=1
+perf-measurement-interval-sec=5
+
+[tiled-display]
+enable=0
+rows=1
+columns=1
+width=1280
+height=720
+gpu-id=0
+
+[source0]
+enable=1
+# Type 4 = RTSP, Type 3 = URI (file/http)
+type=4
+uri=rtsp://go2rtc:8554/test
+num-sources=1
+gpu-id=0
+cudadec-memtype=0
+# Drop frames if decoding falls behind
+drop-frame-interval=0
+# Latency in ms
+latency=100
+
+[streammux]
+gpu-id=0
+batch-size=1
+batched-push-timeout=40000
+width=1280
+height=720
+enable-padding=0
+nvbuf-memory-type=0
+live-source=1
+
+[primary-gie]
+enable=1
+gpu-id=0
+gie-unique-id=1
+nvbuf-memory-type=0
+config-file=infer_yolov8.txt
+
+[tracker]
+enable=1
+gpu-id=0
+# NvDCF tracker - good balance of speed/accuracy
+ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so
+ll-config-file=/opt/nvidia/deepstream/deepstream/samples/configs/deepstream-app/config_tracker_NvDCF_perf.yml
+tracker-width=640
+tracker-height=384
+enable-batch-process=1
+
+[sink0]
+enable=1
+# Type 4 = RTSP output
+type=4
+rtsp-port=8555
+sync=0
+codec=1
+# H.264 encoding
+bitrate=4000000
+enc-type=0
+
+[sink1]
+enable=1
+# Type 6 = Message sink for detection events
+type=6
+msg-conv-config=msg_conv_config.txt
+msg-conv-payload-type=0
+msg-broker-proto-lib=/opt/nvidia/deepstream/deepstream/lib/libnvds_kafka_proto.so
+# For local processing, we'll use file output instead
+# topic=detections
+
+[osd]
+enable=1
+gpu-id=0
+border-width=2
+text-size=12
+text-color=1;1;1;1
+text-bg-color=0.3;0.3;0.3;1
+font=Serif
+show-clock=0
+clock-x-offset=800
+clock-y-offset=820
+clock-text-size=12
+clock-color=1;0;0;0
+
+[tests]
+file-loop=0

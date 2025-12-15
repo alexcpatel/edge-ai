@@ -1,0 +1,29 @@
+# go2rtc configuration for Blink camera RTSP proxy
+# Documentation: https://github.com/AlexxIT/go2rtc
+
+api:
+  listen: ":1984"
+
+rtsp:
+  listen: ":8554"
+
+streams:
+  # Blink cameras - configure your cameras here
+  # Format: blink://username:password@region/camera_name
+  # Region is typically "prod" for US
+  #
+  # Example:
+  # backyard: blink://email@example.com:password@prod/Backyard Camera
+  # frontdoor: blink://email@example.com:password@prod/Front Door
+  #
+  # For testing with a local file:
+  # test: ffmpeg:/videos/test.mp4#video=copy
+
+  # Placeholder - replace with your Blink credentials
+  # backyard: blink://${BLINK_USERNAME}:${BLINK_PASSWORD}@prod/${BLINK_CAMERA_NAME}
+
+  # Test source using RTSP test stream (for development)
+  test: ffmpeg:http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4#video=copy
+
+log:
+  level: info
