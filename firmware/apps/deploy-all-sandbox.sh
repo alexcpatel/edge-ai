@@ -1,8 +1,7 @@
 #!/bin/bash
-# Deploy all app containers as sandbox to device
+# Deploy all app containers to device
 #
 # Usage: ./deploy-all-sandbox.sh <device>
-# Example: ./deploy-all-sandbox.sh 192.168.86.34
 #
 # Idempotent - skips unchanged containers
 
@@ -72,86 +71,74 @@ deploy_app() {
         rm -f '/tmp/${app}-sandbox.tar.gz'
         docker stop '$container_name' 2>/dev/null || true
         docker rm '$container_name' 2>/dev/null || true
-        docker run -d \
-            --name '$container_name' \
-            --restart unless-stopped \
-            -v /data/sandbox/$app:/data \
-            '$image_name' >/dev/null
     "
 
     rm -f "$tarball"
-    log_ok "$app deployed"
+    log_ok "$app image deployed"
 }
 
-setup_blink_credentials() {
+setup_blink_auth() {
     local creds_file="/data/sandbox/squirrel-cam/credentials.json"
-    local code_file="/data/sandbox/squirrel-cam/2fa_code.txt"
 
-    # Check if already authenticated (has token)
+    # Check if already authenticated
     if ssh_cmd "test -f '$creds_file' && grep -q token '$creds_file'" 2>/dev/null; then
         log_ok "Blink already authenticated"
         return 0
     fi
 
-    # Stop container to prevent auth loops
-    ssh_cmd "docker stop sandbox-squirrel-cam 2>/dev/null || true"
-
-    # Prompt for credentials if needed
-    if ! ssh_cmd "test -f '$creds_file'" 2>/dev/null; then
-        log ""
-        log "Blink credentials required"
-        read -p "Blink email: " blink_email
-        [ -z "$blink_email" ] && die "Email required"
-
-        read -s -p "Blink password: " blink_password
-        echo ""
-
-        [ -z "$blink_password" ] && die "Password required"
-
-        ssh_cmd "cat > '$creds_file'" << EOF
-{"username": "$blink_email", "password": "$blink_password"}
-EOF
-        log_ok "Credentials saved"
-    fi
-
-    # Prompt for 2FA code upfront (Blink always requires it for new logins)
     log ""
-    log "Blink will send a 2FA code to your email/SMS when we start."
-    read -p "Press Enter to continue, then enter the code: "
+    log "Blink authentication required"
+    read -p "Blink email: " blink_email
+    [ -z "$blink_email" ] && die "Email required"
 
-    # Start container - it will trigger 2FA
-    ssh_cmd "docker start sandbox-squirrel-cam"
-    log "Waiting for 2FA code to be sent..."
-    sleep 5
+    read -s -p "Blink password: " blink_password
+    echo ""
+    [ -z "$blink_password" ] && die "Password required"
 
-    # Get the 2FA code
-    read -p "Enter 2FA code from email/SMS: " twofa_code
-    [ -z "$twofa_code" ] && die "2FA code required"
+    log "Authenticating (2FA code will be sent to your email/SMS)..."
+    log ""
 
-    # Write code and wait for verification
-    ssh_cmd "echo '$twofa_code' > '$code_file'"
-    log "Verifying..."
-    sleep 8
+    # Run auth.py interactively - blinkpy will prompt for 2FA only
+    ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "root@${DEVICE}" \
+        "docker run --rm -it -v /data/sandbox/squirrel-cam:/data sandbox/squirrel-cam:dev \
+         python3 /app/auth.py '$blink_email' '$blink_password'"
 
-    # Check result
-    local logs
-    logs=$(ssh_cmd "docker logs --tail 15 sandbox-squirrel-cam 2>&1" || echo "")
-
-    if echo "$logs" | grep -q "2FA verification successful\|Connected to Blink\|Found.*cameras"; then
-        log_ok "Blink authentication successful!"
+    # Verify it worked
+    if ssh_cmd "test -f '$creds_file' && grep -q token '$creds_file'" 2>/dev/null; then
+        log_ok "Blink authentication successful"
     else
-        log "Authentication may have failed. Check logs:"
-        log "  ssh root@$DEVICE 'docker logs sandbox-squirrel-cam'"
+        die "Authentication failed"
     fi
 }
 
-# Deploy apps
+start_container() {
+    local container_name="sandbox-squirrel-cam"
+    local image_name="sandbox/squirrel-cam:dev"
+
+    # Start if not running
+    if ssh_cmd "docker ps --format '{{.Names}}' | grep -q '^${container_name}$'" 2>/dev/null; then
+        log_ok "Container already running"
+    else
+        ssh_cmd "docker run -d \
+            --name '$container_name' \
+            --restart unless-stopped \
+            -v /data/sandbox/squirrel-cam:/data \
+            '$image_name' >/dev/null"
+        log_ok "Container started"
+    fi
+}
+
+# Deploy
 deploy_app squirrel-cam
 
-# Setup Blink credentials
-setup_blink_credentials
+# Auth (if needed)
+setup_blink_auth
 
-# Show status
+# Start container
+start_container
+
+# Status
 log ""
 log "=== Status ==="
 ssh_cmd "docker ps --format 'table {{.Names}}\t{{.Status}}'" 2>/dev/null || true
