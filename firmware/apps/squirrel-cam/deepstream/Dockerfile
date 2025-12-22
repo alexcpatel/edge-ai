@@ -1,42 +1,40 @@
 # DeepStream inference container for Jetson Orin
-# Uses YOLOv8 with TensorRT for GPU-accelerated animal detection
+#
+# Current model: YOLOv8n (COCO 80 classes) - placeholder
+# To swap with custom SageMaker model:
+#   1. Export model to ONNX format
+#   2. Mount to /models/model.onnx
+#   3. Update labels.txt with your classes
+#   4. Update infer_config.txt if input dimensions differ
 
-FROM nvcr.io/nvidia/deepstream-l4t:7.0-samples
+FROM nvcr.io/nvidia/deepstream-l4t:6.4-samples
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Python dependencies for DeepStream bindings and utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-dev \
     libgstreamer1.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages
-RUN pip3 install --no-cache-dir \
-    numpy \
-    opencv-python-headless \
-    ultralytics \
-    onnx \
-    onnxruntime
+# ultralytics used to download/convert YOLOv8 model on first run
+RUN pip3 install --no-cache-dir numpy ultralytics onnx
 
-# Create directories
-RUN mkdir -p /app /models /config /videos
+RUN mkdir -p /app /models /config
 
-# Copy application and config
 COPY app/ /app/
 COPY config/ /config/
 
 WORKDIR /app
 
-# DeepStream Python bindings are included in the base image
 ENV PYTHONPATH=/opt/nvidia/deepstream/deepstream/lib:$PYTHONPATH
 ENV LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:$LD_LIBRARY_PATH
 ENV GST_PLUGIN_PATH=/opt/nvidia/deepstream/deepstream/lib/gst-plugins
 
-# On first run, the model will be converted to TensorRT engine
-# This can take several minutes but only happens once
-ENV MODEL_PATH=/models/yolov8n.pt
-ENV ENGINE_PATH=/models/yolov8n.engine
+# Model configuration - override to use custom model
+ENV MODEL_PATH=/models/yolov8n.onnx
+ENV MODEL_CONFIG=/config/infer_config.txt
+ENV LABELS_PATH=/config/labels.txt
+ENV DETECTION_THRESHOLD=0.5
 
 CMD ["python3", "detector.py"]

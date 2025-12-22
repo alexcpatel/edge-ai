@@ -1,28 +1,19 @@
-# Squirrel Cam - Edge AI inference for Blink camera clips
+# Squirrel Cam - Detection event handler
 #
-# Base options (swap as needed):
-#   - python:3.11-slim (~150MB, for testing workflow)
-#   - dustynv/l4t-pytorch:r36.2.0 (~7GB, for GPU/PyTorch)
+# Listens for detection events from DeepStream container.
+# Also includes auth.py for Blink authentication.
 
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir \
-    blinkpy \
-    aiohttp \
-    aiofiles
+# blinkpy/aiohttp needed for auth.py (Blink authentication)
+RUN pip3 install --no-cache-dir blinkpy aiohttp
 
-# Copy application code
 COPY app/ /app/
 
-ENV CONFIG_PATH=/data/config.json
-ENV CREDENTIALS_PATH=/data/credentials.json
-ENV CLIPS_PATH=/data/clips
 ENV PYTHONUNBUFFERED=1
-
-HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD pgrep -f "python3 main.py" || exit 1
+ENV SOCKET_PATH=/tmp/detections.sock
+ENV DETECTION_THRESHOLD=0.5
 
 CMD ["python3", "main.py"]

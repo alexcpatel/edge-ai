@@ -1,0 +1,32 @@
+# Model Inference Configuration
+#
+# Current: YOLOv8n (COCO 80 classes) - placeholder until custom model ready
+# To use a custom SageMaker model:
+#   1. Export to ONNX and place at /models/model.onnx
+#   2. Update onnx-file path below
+#   3. Update num-detected-classes
+#   4. Update labels.txt with your class names
+#   5. First run will convert ONNX -> TensorRT engine
+
+[property]
+gpu-id=0
+net-scale-factor=0.0039215697906911373
+model-color-format=0
+onnx-file=/models/yolov8n.onnx
+model-engine-file=/models/yolov8n.engine
+labelfile-path=/config/labels.txt
+infer-dims=3;640;640
+batch-size=1
+network-mode=2
+num-detected-classes=80
+interval=0
+gie-unique-id=1
+cluster-mode=2
+maintain-aspect-ratio=1
+symmetric-padding=1
+output-tensor-meta=1
+
+[class-attrs-all]
+pre-cluster-threshold=0.25
+nms-iou-threshold=0.45
+topk=300

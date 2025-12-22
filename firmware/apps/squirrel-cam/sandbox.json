@@ -1,4 +1,0 @@
-{
-  "docker_args": [],
-  "notes": "Polls Blink cameras for motion clips"
-}

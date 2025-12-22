@@ -1,207 +1,106 @@
 #!/usr/bin/env python3
 """
-DeepStream YOLOv8 Detector for Squirrel Cam
+DeepStream detector for Squirrel Cam
 
-Runs GPU-accelerated inference on RTSP streams using DeepStream.
-Publishes detection events via Unix socket for the main app to consume.
+Runs GPU-accelerated inference on RTSP streams and publishes detection events.
+Outputs annotated video to RTSP for live viewing.
+
+Model: Currently uses YOLOv8n (COCO classes). To swap with a custom model:
+  1. Export your SageMaker model to ONNX format
+  2. Place at /models/model.onnx (or update MODEL_PATH)
+  3. Update /config/labels.txt with your classes
+  4. Update infer_config.txt if input dimensions differ
 """
 
 import os
 import sys
 import json
 import socket
-import time
 from datetime import datetime
 from pathlib import Path
 
 import gi
 gi.require_version('Gst', '1.0')
-from gi.repository import Gst, GLib
+gi.require_version('GstRtspServer', '1.0')
+from gi.repository import Gst, GLib, GstRtspServer
 
 import pyds
 
-SOCKET_PATH = os.environ.get("SOCKET_PATH", "/tmp/detections.sock")
-CONFIG_PATH = os.environ.get("DS_CONFIG", "/config/deepstream.txt")
+# Configuration via environment
 SOURCE_URI = os.environ.get("SOURCE_URI", "rtsp://go2rtc:8554/test")
+RTSP_PORT = int(os.environ.get("RTSP_PORT", "8555"))
+SOCKET_PATH = os.environ.get("SOCKET_PATH", "/tmp/detections.sock")
 DETECTION_THRESHOLD = float(os.environ.get("DETECTION_THRESHOLD", "0.5"))
 
-TARGET_CLASSES = {
-    14: "bird",
-    15: "cat",
-    16: "dog",
-}
-
-COCO_LABELS = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
-    "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
-    "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
-    "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
-    "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
-    "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
-    "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
-    "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
-    "toothbrush"
-]
+# Model configuration - change these to swap models
+MODEL_PATH = os.environ.get("MODEL_PATH", "/models/yolov8n.onnx")
+MODEL_CONFIG = os.environ.get("MODEL_CONFIG", "/config/infer_config.txt")
+LABELS_PATH = os.environ.get("LABELS_PATH", "/config/labels.txt")
 
 
 def log(msg):
     print(f"[detector] {msg}", flush=True)
 
 
+def load_labels():
+    """Load class labels from file."""
+    labels = []
+    if Path(LABELS_PATH).exists():
+        with open(LABELS_PATH) as f:
+            labels = [line.strip() for line in f if line.strip()]
+    return labels
+
+
+LABELS = load_labels()
+
+
 class DetectionPublisher:
-    """Publishes detection events via Unix socket."""
+    """Publishes detection events via Unix socket to the app container."""
 
     def __init__(self, socket_path: str):
         self.socket_path = socket_path
+        self.client_path = socket_path + ".client"
         self.sock = None
-        self._setup_socket()
 
-    def _setup_socket(self):
-        if os.path.exists(self.socket_path):
-            os.unlink(self.socket_path)
-
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        self.sock.bind(self.socket_path)
-        os.chmod(self.socket_path, 0o666)
-        log(f"Detection socket: {self.socket_path}")
+    def connect(self):
+        """Try to connect to the client socket."""
+        if self.sock:
+            return True
+        try:
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+            self.sock.setblocking(False)
+            return True
+        except Exception:
+            return False
 
     def publish(self, detection: dict):
-        msg = json.dumps(detection).encode()
+        """Send detection event to listener."""
+        if not self.sock:
+            self.connect()
         try:
-            self.sock.sendto(msg, self.socket_path + ".client")
+            msg = json.dumps(detection).encode()
+            self.sock.sendto(msg, self.client_path)
+        except (FileNotFoundError, ConnectionRefusedError):
+            pass
         except Exception:
             pass
 
     def close(self):
         if self.sock:
             self.sock.close()
-        if os.path.exists(self.socket_path):
-            os.unlink(self.socket_path)
+            self.sock = None
 
 
-class DeepStreamDetector:
-    """DeepStream pipeline for YOLOv8 inference."""
+class Detector:
+    """DeepStream inference pipeline with RTSP output."""
 
-    def __init__(self, source_uri: str, publisher: DetectionPublisher):
-        self.source_uri = source_uri
+    def __init__(self, publisher: DetectionPublisher):
         self.publisher = publisher
-        self.pipeline = None
-        self.loop = None
         self.frame_count = 0
         self.detection_count = 0
 
-    def build_pipeline(self):
-        Gst.init(None)
-
-        log(f"Building pipeline for: {self.source_uri}")
-
-        self.pipeline = Gst.Pipeline()
-
-        # Source - RTSP or file
-        if self.source_uri.startswith("rtsp://"):
-            source = Gst.ElementFactory.make("rtspsrc", "source")
-            source.set_property("location", self.source_uri)
-            source.set_property("latency", 100)
-
-            depay = Gst.ElementFactory.make("rtph264depay", "depay")
-            source.connect("pad-added", self._on_pad_added, depay)
-        else:
-            source = Gst.ElementFactory.make("filesrc", "source")
-            source.set_property("location", self.source_uri)
-            depay = Gst.ElementFactory.make("qtdemux", "demux")
-            source.connect("pad-added", self._on_pad_added, depay)
-
-        # Decoder
-        parser = Gst.ElementFactory.make("h264parse", "parser")
-        decoder = Gst.ElementFactory.make("nvv4l2decoder", "decoder")
-
-        # Stream muxer
-        streammux = Gst.ElementFactory.make("nvstreammux", "streammux")
-        streammux.set_property("batch-size", 1)
-        streammux.set_property("width", 1280)
-        streammux.set_property("height", 720)
-        streammux.set_property("batched-push-timeout", 40000)
-        streammux.set_property("live-source", 1)
-
-        # Inference
-        pgie = Gst.ElementFactory.make("nvinfer", "pgie")
-        pgie.set_property("config-file-path", "/config/infer_yolov8.txt")
-
-        # Tracker
-        tracker = Gst.ElementFactory.make("nvtracker", "tracker")
-        tracker.set_property("ll-lib-file",
-            "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so")
-        tracker.set_property("ll-config-file",
-            "/opt/nvidia/deepstream/deepstream/samples/configs/deepstream-app/config_tracker_NvDCF_perf.yml")
-        tracker.set_property("tracker-width", 640)
-        tracker.set_property("tracker-height", 384)
-
-        # Video converter for output
-        nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "nvvidconv")
-
-        # OSD for visual output
-        osd = Gst.ElementFactory.make("nvdsosd", "osd")
-
-        # Output - RTSP server
-        nvvidconv2 = Gst.ElementFactory.make("nvvideoconvert", "nvvidconv2")
-        encoder = Gst.ElementFactory.make("nvv4l2h264enc", "encoder")
-        encoder.set_property("bitrate", 4000000)
-
-        rtppay = Gst.ElementFactory.make("rtph264pay", "rtppay")
-
-        sink = Gst.ElementFactory.make("udpsink", "sink")
-        sink.set_property("host", "127.0.0.1")
-        sink.set_property("port", 5000)
-        sink.set_property("sync", False)
-
-        # Add elements
-        elements = [source, parser, decoder, streammux, pgie, tracker,
-                   nvvidconv, osd, nvvidconv2, encoder, rtppay, sink]
-
-        if self.source_uri.startswith("rtsp://"):
-            elements.insert(1, depay)
-
-        for el in elements:
-            if el is None:
-                log(f"Failed to create element")
-                return False
-            self.pipeline.add(el)
-
-        # Link elements (skip source->depay for RTSP, handled via pad-added)
-        if self.source_uri.startswith("rtsp://"):
-            depay.link(parser)
-        else:
-            source.link(parser)
-
-        parser.link(decoder)
-
-        # Link decoder to streammux via sinkpad
-        decoder_srcpad = decoder.get_static_pad("src")
-        mux_sinkpad = streammux.get_request_pad("sink_0")
-        decoder_srcpad.link(mux_sinkpad)
-
-        streammux.link(pgie)
-        pgie.link(tracker)
-        tracker.link(nvvidconv)
-        nvvidconv.link(osd)
-        osd.link(nvvidconv2)
-        nvvidconv2.link(encoder)
-        encoder.link(rtppay)
-        rtppay.link(sink)
-
-        # Add probe for detection handling
-        osd_sinkpad = osd.get_static_pad("sink")
-        osd_sinkpad.add_probe(Gst.PadProbeType.BUFFER, self._osd_probe_callback, 0)
-
-        return True
-
-    def _on_pad_added(self, src, pad, target):
-        pad.link(target.get_static_pad("sink"))
-
-    def _osd_probe_callback(self, pad, info, user_data):
+    def osd_probe(self, pad, info, user_data):
+        """Callback for each frame - extracts detections."""
         gst_buffer = info.get_buffer()
         if not gst_buffer:
             return Gst.PadProbeReturn.OK
@@ -230,7 +129,7 @@ class DeepStreamDetector:
                 confidence = obj_meta.confidence
 
                 if confidence >= DETECTION_THRESHOLD:
-                    label = COCO_LABELS[class_id] if class_id < len(COCO_LABELS) else f"class_{class_id}"
+                    label = LABELS[class_id] if class_id < len(LABELS) else f"class_{class_id}"
 
                     detection = {
                         "timestamp": datetime.now().isoformat(),
@@ -249,9 +148,7 @@ class DeepStreamDetector:
 
                     self.detection_count += 1
                     self.publisher.publish(detection)
-
-                    if class_id in TARGET_CLASSES:
-                        log(f"Detected {label} (conf={confidence:.2f}, track={obj_meta.object_id})")
+                    log(f"Detected {label} (conf={confidence:.2f})")
 
                 try:
                     l_obj = l_obj.next
@@ -265,80 +162,195 @@ class DeepStreamDetector:
 
         return Gst.PadProbeReturn.OK
 
-    def _on_bus_message(self, bus, message):
-        t = message.type
-        if t == Gst.MessageType.EOS:
-            log("End of stream")
-            self.loop.quit()
-        elif t == Gst.MessageType.ERROR:
-            err, debug = message.parse_error()
-            log(f"Error: {err}, {debug}")
-            self.loop.quit()
-        elif t == Gst.MessageType.WARNING:
-            err, debug = message.parse_warning()
-            log(f"Warning: {err}")
-        return True
 
-    def run(self):
-        if not self.build_pipeline():
-            log("Failed to build pipeline")
-            return False
+def make_elm_or_print_err(factoryname, name):
+    """Create a GStreamer element or exit with error."""
+    elm = Gst.ElementFactory.make(factoryname, name)
+    if not elm:
+        log(f"Unable to create {factoryname}")
+        sys.exit(1)
+    return elm
 
-        bus = self.pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message", self._on_bus_message)
 
-        log("Starting pipeline...")
-        self.pipeline.set_state(Gst.State.PLAYING)
+def create_pipeline(detector: Detector):
+    """Create the DeepStream pipeline."""
+    Gst.init(None)
 
-        self.loop = GLib.MainLoop()
-        try:
-            self.loop.run()
-        except KeyboardInterrupt:
-            log("Interrupted")
-        finally:
-            self.pipeline.set_state(Gst.State.NULL)
-            log(f"Processed {self.frame_count} frames, {self.detection_count} detections")
+    pipeline = Gst.Pipeline()
 
-        return True
+    # Source
+    if SOURCE_URI.startswith("rtsp://"):
+        source = make_elm_or_print_err("rtspsrc", "source")
+        source.set_property("location", SOURCE_URI)
+        source.set_property("latency", 200)
+        depay = make_elm_or_print_err("rtph264depay", "depay")
+    else:
+        source = make_elm_or_print_err("filesrc", "source")
+        source.set_property("location", SOURCE_URI)
+        depay = make_elm_or_print_err("qtdemux", "demux")
+
+    h264parser = make_elm_or_print_err("h264parse", "h264parser")
+    decoder = make_elm_or_print_err("nvv4l2decoder", "decoder")
+
+    streammux = make_elm_or_print_err("nvstreammux", "streammux")
+    streammux.set_property("batch-size", 1)
+    streammux.set_property("width", 1280)
+    streammux.set_property("height", 720)
+    streammux.set_property("batched-push-timeout", 40000)
+
+    pgie = make_elm_or_print_err("nvinfer", "pgie")
+    pgie.set_property("config-file-path", MODEL_CONFIG)
+
+    tracker = make_elm_or_print_err("nvtracker", "tracker")
+    tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so")
+    tracker.set_property("tracker-width", 640)
+    tracker.set_property("tracker-height", 384)
+
+    nvvidconv = make_elm_or_print_err("nvvideoconvert", "nvvidconv")
+    nvosd = make_elm_or_print_err("nvdsosd", "nvosd")
+    nvvidconv2 = make_elm_or_print_err("nvvideoconvert", "nvvidconv2")
+
+    encoder = make_elm_or_print_err("nvv4l2h264enc", "encoder")
+    encoder.set_property("bitrate", 4000000)
+
+    rtppay = make_elm_or_print_err("rtph264pay", "rtppay")
+    rtppay.set_property("pt", 96)
+
+    udpsink = make_elm_or_print_err("udpsink", "udpsink")
+    udpsink.set_property("host", "127.0.0.1")
+    udpsink.set_property("port", 5400)
+    udpsink.set_property("sync", False)
+    udpsink.set_property("async", False)
+
+    # Add elements to pipeline
+    pipeline.add(source)
+    pipeline.add(depay)
+    pipeline.add(h264parser)
+    pipeline.add(decoder)
+    pipeline.add(streammux)
+    pipeline.add(pgie)
+    pipeline.add(tracker)
+    pipeline.add(nvvidconv)
+    pipeline.add(nvosd)
+    pipeline.add(nvvidconv2)
+    pipeline.add(encoder)
+    pipeline.add(rtppay)
+    pipeline.add(udpsink)
+
+    # Link elements
+    def on_pad_added(src, pad, sink):
+        sinkpad = sink.get_static_pad("sink")
+        if not sinkpad.is_linked():
+            pad.link(sinkpad)
+
+    source.connect("pad-added", on_pad_added, depay)
+    depay.link(h264parser)
+    h264parser.link(decoder)
+
+    sinkpad = streammux.get_request_pad("sink_0")
+    srcpad = decoder.get_static_pad("src")
+    srcpad.link(sinkpad)
+
+    streammux.link(pgie)
+    pgie.link(tracker)
+    tracker.link(nvvidconv)
+    nvvidconv.link(nvosd)
+    nvosd.link(nvvidconv2)
+    nvvidconv2.link(encoder)
+    encoder.link(rtppay)
+    rtppay.link(udpsink)
+
+    # Add probe for detections
+    osdsinkpad = nvosd.get_static_pad("sink")
+    osdsinkpad.add_probe(Gst.PadProbeType.BUFFER, detector.osd_probe, 0)
+
+    return pipeline
+
+
+def start_rtsp_server():
+    """Start RTSP server that reads from UDP and serves to clients."""
+    server = GstRtspServer.RTSPServer.new()
+    server.set_service(str(RTSP_PORT))
+
+    factory = GstRtspServer.RTSPMediaFactory.new()
+    factory.set_launch(
+        "( udpsrc port=5400 caps=\"application/x-rtp,media=video,encoding-name=H264\" ! "
+        "rtph264depay ! h264parse ! rtph264pay name=pay0 pt=96 )"
+    )
+    factory.set_shared(True)
+
+    mounts = server.get_mount_points()
+    mounts.add_factory("/ds", factory)
+
+    server.attach(None)
+    log(f"RTSP server at rtsp://0.0.0.0:{RTSP_PORT}/ds")
+    return server
 
 
 def download_model():
-    """Download YOLOv8n model and convert to ONNX if needed."""
-    model_path = Path("/models/yolov8n.onnx")
+    """Download default model if not present."""
+    model_path = Path(MODEL_PATH)
     if model_path.exists():
-        log("Model already exists")
+        log(f"Model found: {MODEL_PATH}")
         return True
 
-    log("Downloading YOLOv8n model...")
+    log("Downloading YOLOv8n model (placeholder)...")
     try:
         from ultralytics import YOLO
         model = YOLO("yolov8n.pt")
         model.export(format="onnx", imgsz=640, simplify=True)
-
-        # Move to models directory
         Path("yolov8n.onnx").rename(model_path)
-        log("Model exported to ONNX")
+        log(f"Model saved to {MODEL_PATH}")
         return True
     except Exception as e:
-        log(f"Failed to download model: {e}")
+        log(f"Model download failed: {e}")
         return False
 
 
+def bus_callback(bus, message, loop):
+    """Handle GStreamer bus messages."""
+    t = message.type
+    if t == Gst.MessageType.EOS:
+        log("End of stream")
+        loop.quit()
+    elif t == Gst.MessageType.ERROR:
+        err, debug = message.parse_error()
+        log(f"Error: {err.message}")
+        loop.quit()
+    return True
+
+
 def main():
-    log("Starting DeepStream detector...")
+    log("Starting detector...")
+    log(f"Source: {SOURCE_URI}")
+    log(f"Model: {MODEL_PATH}")
+    log(f"Threshold: {DETECTION_THRESHOLD}")
 
     if not download_model():
-        log("Model download failed, exiting")
         sys.exit(1)
 
     publisher = DetectionPublisher(SOCKET_PATH)
-    detector = DeepStreamDetector(SOURCE_URI, publisher)
+    detector = Detector(publisher)
+
+    pipeline = create_pipeline(detector)
+    rtsp_server = start_rtsp_server()
+
+    loop = GLib.MainLoop()
+    bus = pipeline.get_bus()
+    bus.add_signal_watch()
+    bus.connect("message", bus_callback, loop)
+
+    log("Starting pipeline...")
+    pipeline.set_state(Gst.State.PLAYING)
 
     try:
-        detector.run()
+        loop.run()
+    except KeyboardInterrupt:
+        log("Interrupted")
     finally:
+        pipeline.set_state(Gst.State.NULL)
         publisher.close()
+        log(f"Processed {detector.frame_count} frames, {detector.detection_count} detections")
 
 
 if __name__ == "__main__":
