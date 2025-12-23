@@ -1,15 +1,8 @@
 #!/usr/bin/env python3
 """
-DeepStream detector for Squirrel Cam
-
-Runs GPU-accelerated inference on RTSP streams and publishes detection events.
-Outputs annotated video to RTSP for live viewing.
-
-Model: Currently uses YOLOv8n (COCO classes). To swap with a custom model:
-  1. Export your SageMaker model to ONNX format
-  2. Place at /models/model.onnx (or update MODEL_PATH)
-  3. Update /config/labels.txt with your classes
-  4. Update infer_config.txt if input dimensions differ
+DeepStream detector - GPU inference on RTSP streams.
+Publishes detection events and outputs annotated RTSP stream.
+See infer_config.txt to swap models.
 """
 
 import os

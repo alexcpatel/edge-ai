@@ -73,9 +73,8 @@ local_conf_header:
     PACKAGECONFIG:remove:pn-docker = " sysvinit"
     PACKAGECONFIG:append:pn-openssh = " systemd"
 
-    # NVIDIA Container Runtime - add later when packages are available
-    # IMAGE_INSTALL:append = " nvidia-container-runtime"
-    # IMAGE_INSTALL:append = " libnvidia-container-tools libnvidia-container1"
+    # NVIDIA Container Toolkit - required for GPU containers (DeepStream, etc)
+    IMAGE_INSTALL:append = " nvidia-container-toolkit"
 
   network-config: |
     # NetworkManager for reliable networking

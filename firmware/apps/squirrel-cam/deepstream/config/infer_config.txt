@@ -1,12 +1,11 @@
 # Model Inference Configuration
 #
-# Current: YOLOv8n (COCO 80 classes) - placeholder until custom model ready
-# To use a custom SageMaker model:
-#   1. Export to ONNX and place at /models/model.onnx
-#   2. Update onnx-file path below
-#   3. Update num-detected-classes
-#   4. Update labels.txt with your class names
-#   5. First run will convert ONNX -> TensorRT engine
+# To swap models:
+#   1. Place ONNX file at /models/<name>.onnx
+#   2. Update onnx-file and model-engine-file paths below
+#   3. Update num-detected-classes to match your model
+#   4. Update labels.txt with your class names (one per line)
+#   5. Redeploy - first run converts ONNX to TensorRT engine
 
 [property]
 gpu-id=0

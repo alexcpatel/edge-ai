@@ -78,47 +78,63 @@ deploy_container() {
     return 0
 }
 
-setup_tegra_libs() {
-    # Extract Tegra libs from DeepStream container (needed since host has read-only rootfs)
-    log "Checking Tegra libraries..."
-    ssh_cmd "
-        if [ ! -f /data/tegra-libs/libnvbufsurface.so ]; then
-            echo 'Extracting Tegra libraries to /data/tegra-libs...'
-            mkdir -p /data/tegra-libs
-            docker run --rm -v /data/tegra-libs:/out nvcr.io/nvidia/deepstream-l4t:6.3-samples \
-                sh -c 'cp -a /opt/nvidia/deepstream/deepstream-6.3/lib/* /out/'
-            echo 'Tegra libraries extracted'
-        else
-            echo 'Tegra libraries already present'
-        fi
-    "
-    log_ok "Tegra libraries ready"
+check_nvidia_runtime() {
+    # Verify nvidia-container-toolkit is available
+    log "Checking NVIDIA container runtime..."
+    if ! ssh_cmd "docker info 2>/dev/null | grep -q nvidia"; then
+        die "nvidia-container-toolkit not installed. Rebuild Yocto image with nvidia-container-toolkit package."
+    fi
+    log_ok "NVIDIA runtime available"
 }
 
 deploy_deepstream() {
     # DeepStream must be built ON the Jetson (L4T images are Jetson-only)
     local image_name="sandbox/squirrel-deepstream:dev"
     local container_name="sandbox-deepstream"
+    local cache_file="/data/docker-cache/squirrel-deepstream.tar"
 
-    # Ensure Tegra libs are available
-    setup_tegra_libs
+    # Verify nvidia runtime is available
+    check_nvidia_runtime
+
+    # Compute hash of source files to detect changes
+    local src_hash=$(tar cf - -C "$SCRIPT_DIR/deepstream" . 2>/dev/null | md5 -q)
 
     log "Syncing deepstream source to device..."
     rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
         "$SCRIPT_DIR/deepstream/" "root@${DEVICE}:/tmp/deepstream-build/"
 
-    log "Building deepstream on device (this may take a few minutes)..."
+    log "Building deepstream on device..."
     ssh_cmd "
         set -e
         export DOCKER_CONFIG=/data/.docker
-        mkdir -p \$DOCKER_CONFIG
+        mkdir -p \$DOCKER_CONFIG /data/docker-cache
+
+        # Check if we have a cached image with matching hash
+        if [ -f '$cache_file' ] && [ -f '${cache_file}.hash' ]; then
+            cached_hash=\$(cat '${cache_file}.hash')
+            if [ \"\$cached_hash\" = '$src_hash' ]; then
+                echo 'Loading cached image (source unchanged)...'
+                docker load < '$cache_file'
+                docker stop '$container_name' 2>/dev/null || true
+                docker rm '$container_name' 2>/dev/null || true
+                exit 0
+            fi
+        fi
+
+        echo 'Building image (this takes ~10min first time, cached after)...'
         cd /tmp/deepstream-build
         docker build -t '$image_name' .
         rm -rf /tmp/deepstream-build
+
+        # Cache the built image for next time
+        echo 'Caching built image...'
+        docker save '$image_name' > '$cache_file'
+        echo '$src_hash' > '${cache_file}.hash'
+
         docker stop '$container_name' 2>/dev/null || true
         docker rm '$container_name' 2>/dev/null || true
     " || die "DeepStream build failed on device"
-    log_ok "deepstream built on device"
+    log_ok "deepstream ready"
 }
 
 setup_blink_auth() {
@@ -182,19 +198,16 @@ start_deepstream() {
     fi
 
     log "Starting deepstream..."
-    # Mount extracted Tegra libs and set LD_LIBRARY_PATH
     ssh_cmd "docker run -d \
         --name '$container' \
         --restart unless-stopped \
         --network squirrel-net \
-        --privileged \
-        -v /data/tegra-libs:/usr/lib/aarch64-linux-gnu/tegra \
+        --runtime nvidia \
         -p 8555:8555 \
         -v /data/sandbox/squirrel-cam/models:/models \
         -v /tmp/squirrel-sock:/tmp \
         -e SOURCE_URI=rtsp://sandbox-go2rtc:8554/test \
         -e RTSP_PORT=8555 \
-        -e LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/tegra:/opt/nvidia/deepstream/deepstream-6.3/lib \
         '$image' >/dev/null"
     log_ok "deepstream started"
 }
