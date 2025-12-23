@@ -78,10 +78,30 @@ deploy_container() {
     return 0
 }
 
+setup_tegra_libs() {
+    # Extract Tegra libs from DeepStream container (needed since host has read-only rootfs)
+    log "Checking Tegra libraries..."
+    ssh_cmd "
+        if [ ! -f /data/tegra-libs/libnvbufsurface.so ]; then
+            echo 'Extracting Tegra libraries to /data/tegra-libs...'
+            mkdir -p /data/tegra-libs
+            docker run --rm -v /data/tegra-libs:/out nvcr.io/nvidia/deepstream-l4t:6.3-samples \
+                sh -c 'cp -a /opt/nvidia/deepstream/deepstream-6.3/lib/* /out/'
+            echo 'Tegra libraries extracted'
+        else
+            echo 'Tegra libraries already present'
+        fi
+    "
+    log_ok "Tegra libraries ready"
+}
+
 deploy_deepstream() {
     # DeepStream must be built ON the Jetson (L4T images are Jetson-only)
     local image_name="sandbox/squirrel-deepstream:dev"
     local container_name="sandbox-deepstream"
+
+    # Ensure Tegra libs are available
+    setup_tegra_libs
 
     log "Syncing deepstream source to device..."
     rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
@@ -89,12 +109,15 @@ deploy_deepstream() {
 
     log "Building deepstream on device (this may take a few minutes)..."
     ssh_cmd "
+        set -e
+        export DOCKER_CONFIG=/data/.docker
+        mkdir -p \$DOCKER_CONFIG
         cd /tmp/deepstream-build
         docker build -t '$image_name' .
         rm -rf /tmp/deepstream-build
         docker stop '$container_name' 2>/dev/null || true
         docker rm '$container_name' 2>/dev/null || true
-    "
+    " || die "DeepStream build failed on device"
     log_ok "deepstream built on device"
 }
 
@@ -159,17 +182,19 @@ start_deepstream() {
     fi
 
     log "Starting deepstream..."
+    # Mount extracted Tegra libs and set LD_LIBRARY_PATH
     ssh_cmd "docker run -d \
         --name '$container' \
         --restart unless-stopped \
         --network squirrel-net \
-        --runtime nvidia \
-        --gpus all \
+        --privileged \
+        -v /data/tegra-libs:/usr/lib/aarch64-linux-gnu/tegra \
         -p 8555:8555 \
         -v /data/sandbox/squirrel-cam/models:/models \
         -v /tmp/squirrel-sock:/tmp \
         -e SOURCE_URI=rtsp://sandbox-go2rtc:8554/test \
         -e RTSP_PORT=8555 \
+        -e LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/tegra:/opt/nvidia/deepstream/deepstream-6.3/lib \
         '$image' >/dev/null"
     log_ok "deepstream started"
 }
