@@ -77,6 +77,7 @@ EXTRA_IMAGE_FEATURES += "debug-tweaks"
 # Read-only rootfs volatile binds - /data is the only writable partition
 VOLATILE_BINDS += " \
     /data/docker /var/lib/docker \
+    /data/config/docker /etc/docker \
     /data/config/NetworkManager /var/lib/NetworkManager \
     /data/log /var/log \
 "

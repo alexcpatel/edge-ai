@@ -7,33 +7,23 @@ SRC_URI = " \
     file://edge-docker \
     file://container-signing.pub \
     file://ecr-url.txt \
-    file://daemon.json \
 "
 
 S = "${WORKDIR}"
 
 RDEPENDS:${PN} = "bash docker cosign"
 
-PKI_DIR = "/data/config/pki"
-ECR_DIR = "/data/config/ecr"
-
 do_install() {
     install -d ${D}${bindir}
     install -m 0755 ${WORKDIR}/edge-docker ${D}${bindir}/
 
-    # Install PKI config (will be copied to /data on first boot)
+    # PKI config (copied to /data on first boot by bootstrap)
     install -d ${D}/etc/edge-ai/container-config
     install -m 0644 ${WORKDIR}/container-signing.pub ${D}/etc/edge-ai/container-config/
     install -m 0644 ${WORKDIR}/ecr-url.txt ${D}/etc/edge-ai/container-config/
-
-    # Docker config - use /data/docker for storage (not tmpfs)
-    install -d ${D}${sysconfdir}/docker
-    install -m 0644 ${WORKDIR}/daemon.json ${D}${sysconfdir}/docker/
 }
 
 FILES:${PN} = " \
     ${bindir}/edge-docker \
     /etc/edge-ai/container-config \
-    ${sysconfdir}/docker \
 "
-
