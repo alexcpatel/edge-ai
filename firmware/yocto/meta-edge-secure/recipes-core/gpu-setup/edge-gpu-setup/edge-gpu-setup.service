@@ -1,0 +1,13 @@
+[Unit]
+Description=Configure GPU and nvidia-container-runtime for Tegra
+After=nvidia-container-setup.service local-fs.target
+Before=docker.service
+Requires=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/edge-gpu-setup.sh
+
+[Install]
+WantedBy=multi-user.target

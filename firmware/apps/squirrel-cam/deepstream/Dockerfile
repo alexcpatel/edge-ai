@@ -1,5 +1,5 @@
-# DeepStream 7.1 for JetPack 6.1 / L4T 36.4
-FROM nvcr.io/nvidia/deepstream-l4t:7.1-samples
+# DeepStream 7.1 for JetPack 6.1 / L4T 36.4 (multiarch - can cross-build)
+FROM nvcr.io/nvidia/deepstream:7.1-triton-multiarch
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -20,7 +20,7 @@ COPY config/ /config/
 
 WORKDIR /app
 
-ENV PYTHONPATH=/opt/nvidia/deepstream/deepstream/lib:$PYTHONPATH
+ENV PYTHONPATH=/opt/nvidia/deepstream/deepstream/lib
 ENV MODEL_PATH=/models/yolov8n.onnx
 ENV MODEL_CONFIG=/config/infer_config.txt
 ENV LABELS_PATH=/config/labels.txt

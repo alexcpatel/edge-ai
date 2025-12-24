@@ -26,14 +26,45 @@ ssh_cmd() {
 # Check connectivity and nvidia runtime
 log "Checking device..."
 ssh_cmd "true" || die "Cannot reach device: $DEVICE"
-ssh_cmd "docker info 2>/dev/null | grep -q 'nvidia'" || die "nvidia runtime not configured in docker"
+
+# Ensure /data is mounted
+ssh_cmd "mountpoint -q /data || mount /data" 2>/dev/null || true
+
+# Configure nvidia runtime if not already
+if ! ssh_cmd "docker info 2>/dev/null | grep -q 'nvidia'"; then
+    log "Configuring nvidia runtime..."
+    ssh_cmd "
+        mkdir -p /data/config/docker
+        cat > /data/config/docker/daemon.json << 'EOF'
+{
+    \"data-root\": \"/data/docker\",
+    \"storage-driver\": \"vfs\",
+    \"runtimes\": {
+        \"nvidia\": {
+            \"path\": \"nvidia-container-runtime\",
+            \"runtimeArgs\": []
+        }
+    }
+}
+EOF
+        # Write to rootfs if needed (temp workaround for old images)
+        mount -o remount,rw / 2>/dev/null || true
+        mkdir -p /etc/docker
+        cp /data/config/docker/daemon.json /etc/docker/
+        mount -o remount,ro / 2>/dev/null || true
+        systemctl restart docker
+        sleep 2
+    "
+fi
+ssh_cmd "docker info 2>/dev/null | grep -q 'nvidia'" || die "Failed to configure nvidia runtime"
 log_ok "Device ready"
 
-# Setup directories
+# Setup directories and clean old images
 ssh_cmd "
     mkdir -p /data/sandbox/squirrel-cam/models
     mkdir -p /tmp/squirrel-sock
     docker network create squirrel-net 2>/dev/null || true
+    docker image prune -f >/dev/null 2>&1 || true
 "
 
 # Deploy go2rtc and app (cross-compiled on dev machine)
@@ -44,10 +75,13 @@ deploy_container() {
     local container="sandbox-$name"
 
     log "Building $name..."
-    docker buildx build --platform linux/arm64 -t "$image" --load "$build_dir" -q >/dev/null
+    docker buildx build --builder desktop-linux --platform linux/arm64 -t "$image" --load --progress=plain "$build_dir"
 
-    log "Deploying $name..."
-    docker save "$image" | gzip | ssh_cmd "docker load >/dev/null"
+    log "Deploying $name to device..."
+    local size_bytes=$(docker image inspect "$image" --format='{{.Size}}')
+    local size_mb=$((size_bytes / 1024 / 1024))
+    log "  Transferring ${size_mb}MB..."
+    docker save "$image" | pv -s "$size_bytes" | gzip | ssh_cmd "docker load"
     ssh_cmd "docker stop '$container' 2>/dev/null; docker rm '$container' 2>/dev/null" || true
     log_ok "$name"
 }
@@ -55,19 +89,37 @@ deploy_container() {
 deploy_container "squirrel-go2rtc" "$SCRIPT_DIR/go2rtc"
 deploy_container "squirrel-app" "$SCRIPT_DIR"
 
-# Deploy deepstream (must build on device - L4T images are Jetson-only)
+# DeepStream - build on device to avoid 6GB transfer
+# Base image pulled directly from NGC, only app code transferred
 deploy_deepstream() {
+    local base_image="nvcr.io/nvidia/deepstream:7.1-triton-multiarch"
     local image="sandbox/squirrel-deepstream:dev"
     local container="sandbox-deepstream"
 
-    log "Syncing deepstream to device..."
+    # Ensure base image exists on device (one-time 6GB pull from NGC)
+    if ! ssh_cmd "docker image inspect '$base_image' >/dev/null 2>&1"; then
+        log "Pulling DeepStream base image on device (one-time, ~6GB)..."
+
+        # Get NGC key and login on device (use /data for credentials)
+        NGC_KEY=$(aws ssm get-parameter --name "/edge-ai/ngc-api-key" --with-decryption --query "Parameter.Value" --output text --region us-west-2 2>/dev/null) || die "Failed to get NGC key from SSM"
+        ssh_cmd "mkdir -p /data/.docker && export DOCKER_CONFIG=/data/.docker && echo '$NGC_KEY' | docker login nvcr.io -u '\$oauthtoken' --password-stdin"
+
+        ssh_cmd "export DOCKER_CONFIG=/data/.docker && docker pull '$base_image'" || die "Failed to pull base image"
+        log_ok "Base image cached on device"
+    else
+        log "DeepStream base image already cached"
+    fi
+
+    # Sync only app code (few MB)
+    log "Syncing deepstream app to device..."
     rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -q" \
         "$SCRIPT_DIR/deepstream/" "root@${DEVICE}:/tmp/deepstream-build/"
 
-    log "Building deepstream on device (~10min first time)..."
+    # Build on device (fast - base layers cached)
+    log "Building deepstream on device..."
     ssh_cmd "
         cd /tmp/deepstream-build
-        docker build -t '$image' . >/dev/null
+        docker build -t '$image' .
         rm -rf /tmp/deepstream-build
         docker stop '$container' 2>/dev/null || true
         docker rm '$container' 2>/dev/null || true

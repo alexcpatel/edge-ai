@@ -63,7 +63,7 @@ local_conf_header:
     PARALLEL_MAKE = "-j8"
 
   container-runtime: |
-    DISTRO_FEATURES:append = " virtualization systemd usrmerge"
+    DISTRO_FEATURES:append = " virtualization systemd usrmerge ldconfig"
     DISTRO_FEATURES_BACKFILL_CONSIDERED:append = " sysvinit"
     VIRTUAL-RUNTIME_init_manager = "systemd"
     VIRTUAL-RUNTIME_initscripts = ""
@@ -73,8 +73,8 @@ local_conf_header:
     PACKAGECONFIG:remove:pn-docker = " sysvinit"
     PACKAGECONFIG:append:pn-openssh = " systemd"
 
-    # NVIDIA Container Toolkit - required for GPU containers (DeepStream, etc)
-    IMAGE_INSTALL:append = " nvidia-container-toolkit"
+    # NVIDIA Container Toolkit and GPU support for containers
+    IMAGE_INSTALL:append = " nvidia-container-toolkit tegra-libraries-multimedia"
 
   network-config: |
     # NetworkManager for reliable networking

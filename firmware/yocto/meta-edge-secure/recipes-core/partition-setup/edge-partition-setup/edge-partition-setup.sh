@@ -52,9 +52,7 @@ EOF
     log "Created docker config"
 fi
 
-# Mark done
+# Mark done - keep /data mounted for fstab
 touch "$DATA_MOUNT/.partition-setup-done"
-
-umount "$DATA_MOUNT" 2>/dev/null || true
 
 log "Data partition ready"

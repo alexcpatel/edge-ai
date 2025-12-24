@@ -31,6 +31,7 @@ IMAGE_INSTALL += " \
 # Bootstrap and provisioning
 IMAGE_INSTALL += " \
     edge-partition-setup \
+    edge-gpu-setup \
     edge-bootstrap \
     edge-heartbeat \
     edge-claim-certs \
