@@ -1,6 +1,6 @@
 # Squirrel Cam - Detection event handler
 #
-# Listens for detection events from DeepStream container.
+# Listens for detection events from inference container.
 # Also includes auth.py for Blink authentication.
 
 FROM python:3.11-slim

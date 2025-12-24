@@ -1,5 +1,5 @@
 # go2rtc - Lightweight RTSP proxy for Blink cameras
-# Exposes Blink live view as RTSP streams for DeepStream consumption
+# Exposes Blink live view as RTSP streams for inference
 
 FROM alexxit/go2rtc:latest
 

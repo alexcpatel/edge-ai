@@ -2,7 +2,7 @@
 """
 Squirrel Cam - Detection event handler
 
-Listens for detection events from DeepStream and handles alerts.
+Listens for detection events from inference container and handles alerts.
 """
 
 import os
@@ -21,7 +21,7 @@ def log(msg):
 
 
 class DetectionListener:
-    """Listen for detection events from DeepStream via Unix socket."""
+    """Listen for detection events via Unix socket."""
 
     def __init__(self):
         self.threshold = DETECTION_THRESHOLD
@@ -40,7 +40,7 @@ class DetectionListener:
 
     async def run(self):
         self.setup_socket()
-        log("Waiting for detection events from DeepStream...")
+        log("Waiting for detection events...")
 
         loop = asyncio.get_event_loop()
 

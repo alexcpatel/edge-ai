@@ -74,7 +74,7 @@ local_conf_header:
     PACKAGECONFIG:append:pn-openssh = " systemd"
 
     # NVIDIA Container Toolkit and GPU support for containers
-    IMAGE_INSTALL:append = " nvidia-container-toolkit tegra-libraries-multimedia"
+    IMAGE_INSTALL:append = " nvidia-container-toolkit tegra-libraries-multimedia tensorrt-core"
 
   network-config: |
     # NetworkManager for reliable networking

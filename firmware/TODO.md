@@ -59,7 +59,7 @@
 ### Future Enhancements
 
 - [ ] Secure boot signing with NVIDIA PKC
-- [ ] GPU container support (L4T/DeepStream base images)
+- [x] GPU container support (L4T CUDA + TensorRT)
 - [ ] OTA container updates via AWS IoT Jobs
 - [ ] Production hardening (remove debug-tweaks)
 - [ ] MQTT broker setup for Home Assistant integration

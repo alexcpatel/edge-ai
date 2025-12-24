@@ -5,7 +5,7 @@
 #
 # Deploys 3 containers:
 #   - go2rtc:    RTSP proxy for Blink cameras
-#   - deepstream: GPU inference
+#   - inference: GPU inference with TensorRT
 #   - app:       Detection event handler
 
 set -euo pipefail
@@ -38,7 +38,6 @@ if ! ssh_cmd "docker info 2>/dev/null | grep -q 'nvidia'"; then
         cat > /data/config/docker/daemon.json << 'EOF'
 {
     \"data-root\": \"/data/docker\",
-    \"storage-driver\": \"vfs\",
     \"runtimes\": {
         \"nvidia\": {
             \"path\": \"nvidia-container-runtime\",
@@ -47,11 +46,8 @@ if ! ssh_cmd "docker info 2>/dev/null | grep -q 'nvidia'"; then
     }
 }
 EOF
-        # Write to rootfs if needed (temp workaround for old images)
-        mount -o remount,rw / 2>/dev/null || true
         mkdir -p /etc/docker
-        cp /data/config/docker/daemon.json /etc/docker/
-        mount -o remount,ro / 2>/dev/null || true
+        mount --bind /data/config/docker /etc/docker 2>/dev/null || cp /data/config/docker/daemon.json /etc/docker/
         systemctl restart docker
         sleep 2
     "
@@ -59,7 +55,7 @@ fi
 ssh_cmd "docker info 2>/dev/null | grep -q 'nvidia'" || die "Failed to configure nvidia runtime"
 log_ok "Device ready"
 
-# Setup directories and clean old images
+# Setup directories
 ssh_cmd "
     mkdir -p /data/sandbox/squirrel-cam/models
     mkdir -p /tmp/squirrel-sock
@@ -89,45 +85,41 @@ deploy_container() {
 deploy_container "squirrel-go2rtc" "$SCRIPT_DIR/go2rtc"
 deploy_container "squirrel-app" "$SCRIPT_DIR"
 
-# DeepStream - build on device to avoid 6GB transfer
-# Base image pulled directly from NGC, only app code transferred
-deploy_deepstream() {
-    local base_image="nvcr.io/nvidia/deepstream:7.1-triton-multiarch"
-    local image="sandbox/squirrel-deepstream:dev"
-    local container="sandbox-deepstream"
+# Inference container - build on device (base image pulled from NGC)
+deploy_inference() {
+    local base_image="ultralytics/ultralytics:latest-jetson-jetpack6"
+    local image="sandbox/squirrel-inference:dev"
+    local container="sandbox-inference"
 
-    # Ensure base image exists on device (one-time 6GB pull from NGC)
+    # Ensure base image exists on device (one-time ~2GB pull)
     if ! ssh_cmd "docker image inspect '$base_image' >/dev/null 2>&1"; then
-        log "Pulling DeepStream base image on device (one-time, ~6GB)..."
-
-        # Get NGC key and login on device (use /data for credentials)
+        log "Pulling L4T JetPack base image on device..."
         NGC_KEY=$(aws ssm get-parameter --name "/edge-ai/ngc-api-key" --with-decryption --query "Parameter.Value" --output text --region us-west-2 2>/dev/null) || die "Failed to get NGC key from SSM"
         ssh_cmd "mkdir -p /data/.docker && export DOCKER_CONFIG=/data/.docker && echo '$NGC_KEY' | docker login nvcr.io -u '\$oauthtoken' --password-stdin"
-
         ssh_cmd "export DOCKER_CONFIG=/data/.docker && docker pull '$base_image'" || die "Failed to pull base image"
         log_ok "Base image cached on device"
     else
-        log "DeepStream base image already cached"
+        log "L4T JetPack base image already cached"
     fi
 
-    # Sync only app code (few MB)
-    log "Syncing deepstream app to device..."
+    # Sync app code
+    log "Syncing inference app to device..."
     rsync -az --delete -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -q" \
-        "$SCRIPT_DIR/deepstream/" "root@${DEVICE}:/tmp/deepstream-build/"
+        "$SCRIPT_DIR/inference/" "root@${DEVICE}:/tmp/inference-build/"
 
-    # Build on device (fast - base layers cached)
-    log "Building deepstream on device..."
+    # Build on device
+    log "Building inference on device..."
     ssh_cmd "
-        cd /tmp/deepstream-build
+        cd /tmp/inference-build
         docker build -t '$image' .
-        rm -rf /tmp/deepstream-build
+        rm -rf /tmp/inference-build
         docker stop '$container' 2>/dev/null || true
         docker rm '$container' 2>/dev/null || true
-    " || die "DeepStream build failed"
-    log_ok "deepstream"
+    " || die "Inference build failed"
+    log_ok "inference"
 }
 
-deploy_deepstream
+deploy_inference
 
 # Start containers
 log "Starting containers..."
@@ -136,12 +128,12 @@ ssh_cmd "docker run -d --name sandbox-go2rtc --restart unless-stopped \
     --network squirrel-net -p 8554:8554 -p 1984:1984 \
     sandbox/squirrel-go2rtc:dev >/dev/null 2>&1" || true
 
-ssh_cmd "docker run -d --name sandbox-deepstream --restart unless-stopped \
+ssh_cmd "docker run -d --name sandbox-inference --restart unless-stopped \
     --network squirrel-net --runtime nvidia -p 8555:8555 \
     -v /data/sandbox/squirrel-cam/models:/models \
     -v /tmp/squirrel-sock:/tmp \
     -e SOURCE_URI=rtsp://sandbox-go2rtc:8554/test \
-    sandbox/squirrel-deepstream:dev >/dev/null 2>&1" || true
+    sandbox/squirrel-inference:dev >/dev/null 2>&1" || true
 
 ssh_cmd "docker run -d --name sandbox-squirrel-app --restart unless-stopped \
     --network squirrel-net \
@@ -150,12 +142,10 @@ ssh_cmd "docker run -d --name sandbox-squirrel-app --restart unless-stopped \
 
 log_ok "All containers started"
 
-# Status
 log ""
 log "Streams:"
-log "  Raw:       vlc rtsp://$DEVICE:8554/test"
-log "  Detection: vlc rtsp://$DEVICE:8555/ds"
+log "  Raw:       rtsp://$DEVICE:8554/test"
 log "  go2rtc UI: http://$DEVICE:1984"
 log ""
 log "Logs:"
-log "  ssh root@$DEVICE 'docker logs -f sandbox-deepstream'"
+log "  ssh root@$DEVICE 'docker logs -f sandbox-inference'"
