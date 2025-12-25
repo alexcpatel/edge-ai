@@ -28,8 +28,9 @@ output "artifacts_bucket_name" {
   value       = aws_s3_bucket.artifacts.bucket
 }
 
-output "yocto_data_volume_id" {
-  description = "EBS volume ID for Yocto build data (can be snapshotted)"
-  value       = aws_ebs_volume.yocto_data.id
-}
+# COMMENTED OUT: Uncomment when volume resource is uncommented in ec2.tf
+# output "yocto_data_volume_id" {
+#   description = "EBS volume ID for Yocto build data (can be snapshotted)"
+#   value       = aws_ebs_volume.yocto_data.id
+# }
 

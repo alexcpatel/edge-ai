@@ -85,29 +85,30 @@ resource "aws_instance" "yocto_builder" {
 }
 
 # Separate data volume for Yocto builds - can be snapshotted/deleted independently
-resource "aws_ebs_volume" "yocto_data" {
-  availability_zone = aws_instance.yocto_builder.availability_zone
-  size              = 200
-  type              = "gp3"
-  iops              = 3000
-  throughput        = 125
-
-  tags = {
-    Name = "yocto-builder-data"
-  }
-
-  lifecycle {
-    # Volume is managed separately (snapshot/restore cycle)
-    ignore_changes = [snapshot_id]
-  }
-}
-
-resource "aws_volume_attachment" "yocto_data" {
-  device_name = "/dev/sdf"
-  volume_id   = aws_ebs_volume.yocto_data.id
-  instance_id = aws_instance.yocto_builder.id
-
-  # Don't force detach - let scripts handle graceful unmount
-  force_detach = false
-}
+# COMMENTED OUT: Uncomment to recreate volume. Run 'terraform apply' after uncommenting.
+# resource "aws_ebs_volume" "yocto_data" {
+#   availability_zone = aws_instance.yocto_builder.availability_zone
+#   size              = 200
+#   type              = "gp3"
+#   iops              = 3000
+#   throughput        = 125
+#
+#   tags = {
+#     Name = "yocto-builder-data"
+#   }
+#
+#   lifecycle {
+#     # Volume is managed separately (snapshot/restore cycle)
+#     ignore_changes = [snapshot_id]
+#   }
+# }
+#
+# resource "aws_volume_attachment" "yocto_data" {
+#   device_name = "/dev/sdf"
+#   volume_id   = aws_ebs_volume.yocto_data.id
+#   instance_id = aws_instance.yocto_builder.id
+#
+#   # Don't force detach - let scripts handle graceful unmount
+#   force_detach = false
+# }
 

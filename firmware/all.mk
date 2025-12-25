@@ -26,6 +26,9 @@ firmware-ec2-health: ## Run EC2 health diagnostics
 firmware-ec2-costs: ## Show EC2 uptime history and costs (JSON)
 	@$(EC2_DIR)/scripts/ec2.sh costs
 
+firmware-ec2-cleanup: ## Delete all snapshots and data volumes to avoid AWS fees
+	@$(EC2_DIR)/scripts/ec2.sh cleanup
+
 # Yocto builds on EC2
 firmware-build: firmware-ec2-start ## Build image (uploads to S3, stops EC2 automatically)
 	@$(EC2_DIR)/scripts/build.sh start

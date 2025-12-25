@@ -218,6 +218,63 @@ restore_data_volume_if_needed() {
     log_success "Data volume restored from snapshot"
 }
 
+cleanup_snapshots_and_volumes() {
+    check_aws_creds
+
+    local terraform_dir="$SCRIPT_DIR/../../terraform"
+    if [ -d "$terraform_dir" ]; then
+        log_info "Removing volume from Terraform state..."
+        cd "$terraform_dir"
+        if terraform state list 2>/dev/null | grep -q "aws_volume_attachment.yocto_data"; then
+            log_info "Destroying volume attachment via Terraform..."
+            terraform destroy -target=aws_volume_attachment.yocto_data -auto-approve >/dev/null 2>&1 || true
+        fi
+        if terraform state list 2>/dev/null | grep -q "aws_ebs_volume.yocto_data"; then
+            log_info "Destroying volume via Terraform..."
+            terraform destroy -target=aws_ebs_volume.yocto_data -auto-approve >/dev/null 2>&1 || true
+        fi
+        cd - >/dev/null
+    fi
+
+    log_info "Deleting all snapshots..."
+    local snapshots
+    snapshots=$(aws ec2 describe-snapshots --region "$AWS_REGION" \
+        --filters "Name=tag:Name,Values=yocto-builder-data-snapshot" \
+        --query "Snapshots[*].SnapshotId" --output text 2>/dev/null || echo "")
+
+    if [ -n "$snapshots" ] && [ "$snapshots" != "None" ]; then
+        for snap_id in $snapshots; do
+            log_info "Deleting snapshot $snap_id..."
+            aws ec2 delete-snapshot --region "$AWS_REGION" --snapshot-id "$snap_id" 2>/dev/null || true
+        done
+        log_success "Deleted all snapshots"
+    else
+        log_info "No snapshots found"
+    fi
+
+    log_info "Checking for any remaining data volumes..."
+    local vol_id=$(get_data_volume_id)
+    if [ -n "$vol_id" ] && [ "$vol_id" != "None" ]; then
+        local instance_id=$(aws ec2 describe-volumes --region "$AWS_REGION" --volume-ids "$vol_id" \
+            --query "Volumes[0].Attachments[0].InstanceId" --output text 2>/dev/null || echo "")
+
+        if [ -n "$instance_id" ] && [ "$instance_id" != "None" ]; then
+            log_info "Detaching volume $vol_id from instance $instance_id..."
+            aws ec2 detach-volume --region "$AWS_REGION" --volume-id "$vol_id" --force >/dev/null 2>&1 || true
+            aws ec2 wait volume-available --region "$AWS_REGION" --volume-ids "$vol_id" 2>/dev/null || true
+        fi
+
+        log_info "Deleting volume $vol_id..."
+        aws ec2 delete-volume --region "$AWS_REGION" --volume-id "$vol_id" 2>/dev/null || true
+        log_success "Deleted data volume"
+    else
+        log_info "No data volume found"
+    fi
+
+    log_success "Cleanup complete - all snapshots and volumes deleted"
+    log_info "Note: Volume resources are commented out in Terraform. Run 'terraform apply' to sync state."
+}
+
 case "${1:-status}" in
     status) show_status ;;
     start)  start_instance ;;
@@ -226,5 +283,6 @@ case "${1:-status}" in
     health) health_check ;;
     setup)  setup_ec2 "$(get_instance_ip_or_exit)" ;;
     costs)  "$SCRIPT_DIR/ec2-usage.sh" costs ;;
-    *)      echo "Usage: $0 [status|start|stop|ssh|health|setup|costs]"; exit 1 ;;
+    cleanup) cleanup_snapshots_and_volumes ;;
+    *)      echo "Usage: $0 [status|start|stop|ssh|health|setup|costs|cleanup]"; exit 1 ;;
 esac
