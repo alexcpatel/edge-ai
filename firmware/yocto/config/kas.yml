@@ -63,7 +63,7 @@ local_conf_header:
     PARALLEL_MAKE = "-j8"
 
   container-runtime: |
-    DISTRO_FEATURES:append = " virtualization systemd usrmerge ldconfig"
+    DISTRO_FEATURES:append = " virtualization systemd usrmerge ldconfig opengl"
     DISTRO_FEATURES_BACKFILL_CONSIDERED:append = " sysvinit"
     VIRTUAL-RUNTIME_init_manager = "systemd"
     VIRTUAL-RUNTIME_initscripts = ""
@@ -74,7 +74,7 @@ local_conf_header:
     PACKAGECONFIG:append:pn-openssh = " systemd"
 
     # NVIDIA Container Toolkit and GPU support for containers
-    IMAGE_INSTALL:append = " nvidia-container-toolkit tegra-libraries-multimedia tensorrt-core"
+    IMAGE_INSTALL:append = " nvidia-container-toolkit tegra-libraries-multimedia cuda-libraries tensorrt-core"
 
   network-config: |
     # NetworkManager for reliable networking

@@ -85,21 +85,19 @@ deploy_container() {
 deploy_container "squirrel-go2rtc" "$SCRIPT_DIR/go2rtc"
 deploy_container "squirrel-app" "$SCRIPT_DIR"
 
-# Inference container - build on device (base image pulled from NGC)
+# Inference container - build on device (base image pulled from Docker Hub)
 deploy_inference() {
     local base_image="ultralytics/ultralytics:latest-jetson-jetpack6"
     local image="sandbox/squirrel-inference:dev"
     local container="sandbox-inference"
 
-    # Ensure base image exists on device (one-time ~2GB pull)
+    # Ensure base image exists on device
     if ! ssh_cmd "docker image inspect '$base_image' >/dev/null 2>&1"; then
-        log "Pulling L4T JetPack base image on device..."
-        NGC_KEY=$(aws ssm get-parameter --name "/edge-ai/ngc-api-key" --with-decryption --query "Parameter.Value" --output text --region us-west-2 2>/dev/null) || die "Failed to get NGC key from SSM"
-        ssh_cmd "mkdir -p /data/.docker && export DOCKER_CONFIG=/data/.docker && echo '$NGC_KEY' | docker login nvcr.io -u '\$oauthtoken' --password-stdin"
-        ssh_cmd "export DOCKER_CONFIG=/data/.docker && docker pull '$base_image'" || die "Failed to pull base image"
+        log "Pulling Ultralytics base image on device..."
+        ssh_cmd "docker pull '$base_image'" || die "Failed to pull base image"
         log_ok "Base image cached on device"
     else
-        log "L4T JetPack base image already cached"
+        log "Ultralytics base image already cached"
     fi
 
     # Sync app code
