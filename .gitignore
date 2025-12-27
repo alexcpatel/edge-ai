@@ -7,3 +7,10 @@ Thumbs.db
 # EC2 usage tracking (local data)
 firmware/infra/ec2/.ec2-usage-history.json
 firmware/infra/ec2/.ec2-current-run
+
+# Terraform (use .example files as templates)
+firmware/infra/terraform/terraform.tfvars
+backend/iot/terraform/terraform.tfvars
+
+# Controller config (use .example or create your own)
+firmware/infra/controller/config/controller-config.local.sh

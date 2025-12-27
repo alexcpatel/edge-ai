@@ -1,0 +1,11 @@
+#!/bin/bash
+# Controller definitions - add your controllers here
+# Format: CONTROLLERS array lists names, then define USER and HOST for each
+
+CONTROLLERS=(steamdeck raspberrypi)
+
+CONTROLLER_steamdeck_USER="steamdeck"
+CONTROLLER_steamdeck_HOST="steamdeck.local"
+
+CONTROLLER_raspberrypi_USER="pi"
+CONTROLLER_raspberrypi_HOST="raspberrypi.local"

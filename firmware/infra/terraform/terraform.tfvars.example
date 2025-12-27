@@ -1,0 +1,6 @@
+notification_email = "you@example.com"
+github_repository  = "your-username/edge-ai"
+
+# AWS Infrastructure (set these to match your AWS account)
+instance_subnet_id = "subnet-xxxxxxxx"
+vpc_id             = "vpc-xxxxxxxx"
