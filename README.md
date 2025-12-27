@@ -28,12 +28,18 @@ make firmware-app-deploy APP=squirrel-cam DEVICE=192.168.86.34 VERSION=v1
 ## Screenshots
 
 <p align="center">
-  <img src="photos/device-1.jpg" width="30%" />
-  <img src="photos/device-2.jpg" width="30%" />
-  <img src="photos/vscode-extension.png" width="30%" />
+  <img src="photos/vscode-extension.png" width="100%" />=
 </p>
 
 <p align="center">
-  <img src="photos/vscode-extension-2.png" width="30%" />
+  <img src="photos/vscode-extension-2.png" width="100%" />
+</p>
+
+<p align="center">
   <img src="photos/flash-terminal.png" width="30%" />
+</p>
+
+<p align="center">
+  <img src="photos/device-1.jpg" width="40%" />
+  <img src="photos/device-2.jpg" width="40%" />
 </p>
